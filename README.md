@@ -23,7 +23,7 @@ OneMillionCrops is a server-wide Paper and Folia challenge where everyone contri
 
 ## Folia version
 
-`OneMillionCrops-1.0.20-folia.jar` supports Folia and Paper 1.21.11 with Java 21 or newer. Install only one OneMillionCrops JAR. The plugin keeps the existing `OneMillionCrops` data folder and SQLite format.
+`OneMillionCrops-1.0.21-folia.jar` supports Folia and Paper 1.21.11 with Java 21 or newer. Install only one OneMillionCrops JAR. The plugin keeps the existing `OneMillionCrops` data folder and SQLite format.
 
 Player menus, action bars and effects run on the player's entity scheduler. Cocoa replanting runs on the target region scheduler. Global timers coordinate refreshes and autosaves; database saves use the async scheduler. Harvest summaries and dashboard state are synchronized across regions.
 
@@ -34,7 +34,7 @@ Folia differences:
 - Install Folia-compatible versions of optional integrations such as PlaceholderAPI.
 - Restart the server when installing this build. `/1mill reload` reloads configuration only.
 
-Build with `mvn package`. The shaded JAR in `target/` includes SQLite. All 69 tests pass, covering scheduler routing, disconnected recipients and simultaneous harvests. An isolated Folia 1.21.11 build 14 server passed startup, status, summary, configuration reload and dashboard API checks. Multi-player gameplay testing is still needed for menus, planting and cocoa farms across region boundaries.
+Build with `mvn package`. The shaded JAR in `target/` includes SQLite. All 75 tests pass, covering scheduler routing, disconnected recipients and simultaneous harvests. An isolated Folia 1.21.11 build 14 server passed startup, status, summary, configuration reload and dashboard API checks. Multi-player gameplay testing is still needed for menus, planting and cocoa farms across region boundaries.
 
 ## Built for a truly shared challenge
 
@@ -168,3 +168,11 @@ The test suite covers target clamping, milestone transitions, contribution track
 <p align="center">
   Built by <a href="https://github.com/MineWing">MineWing</a> · See also <a href="https://github.com/MineWing/Rivet">Rivet</a> and <a href="https://github.com/MineWing/EveryBlock">EveryBlock</a>
 </p>
+
+## Operator shortcuts
+
+- `/gms`, `/gmc`, `/gmsp` switch your own mode to survival, creative or spectator. Requires `onemillion.gamemode`.
+- `/tp <player>` teleports you to an online player.
+- `/tp here <player>` brings that player to your current location. Requires `onemillion.teleport`.
+
+Both permissions default to operators. Teleports use Folia's asynchronous teleport API and report cancelled or failed moves. Player names support tab completion. These shortcuts are player-only. The plugin's `/tp` handles these two forms; use `/minecraft:tp` for vanilla coordinates and selectors. If another plugin owns `/tp`, use `/onemillioncrops:tp`.

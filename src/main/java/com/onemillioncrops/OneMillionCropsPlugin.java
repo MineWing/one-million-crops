@@ -2,6 +2,7 @@ package com.onemillioncrops;
 
 import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.command.MainCommand;
+import com.onemillioncrops.command.UtilityCommand;
 import com.onemillioncrops.command.ProgressCommand;
 import com.onemillioncrops.config.ConfigManager;
 import com.onemillioncrops.data.ProgressDatabase;
@@ -115,6 +116,11 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
     }
 
     private void registerCommands() {
+        UtilityCommand utility = new UtilityCommand(this);
+        for (String name : java.util.List.of("gms", "gmc", "gmsp", "tp")) {
+            Objects.requireNonNull(getCommand(name)).setExecutor(utility);
+            Objects.requireNonNull(getCommand(name)).setTabCompleter(utility);
+        }
         MainCommand main = new MainCommand(this);
         Objects.requireNonNull(getCommand("1mill")).setExecutor(main);
         Objects.requireNonNull(getCommand("1mill")).setTabCompleter(main);

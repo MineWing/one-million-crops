@@ -1,5 +1,5 @@
 name: OneMillionCrops
-version: '1.0.20-folia'
+version: '1.0.21-folia'
 main: com.onemillioncrops.OneMillionCropsPlugin
 api-version: '1.21.11'
 authors: [Alex]
@@ -13,7 +13,29 @@ commands:
   progress:
     description: Open the crop progress menu
     usage: /progress [crop]
+  gms:
+    description: Switch to survival mode
+    usage: /gms
+    permission: onemillion.gamemode
+  gmc:
+    description: Switch to creative mode
+    usage: /gmc
+    permission: onemillion.gamemode
+  gmsp:
+    description: Switch to spectator mode
+    usage: /gmsp
+    permission: onemillion.gamemode
+  tp:
+    description: Teleport to a player or bring a player here
+    usage: /tp <player> or /tp here <player>
+    permission: onemillion.teleport
 permissions:
+  onemillion.gamemode:
+    description: Use the survival, creative and spectator shortcuts
+    default: op
+  onemillion.teleport:
+    description: Teleport to players and bring players here
+    default: op
   onemillion.progress:
     description: View challenge progress
     default: true
