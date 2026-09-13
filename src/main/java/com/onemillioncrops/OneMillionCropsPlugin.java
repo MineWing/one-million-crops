@@ -42,6 +42,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 
 public final class OneMillionCropsPlugin extends JavaPlugin {
+    private com.onemillioncrops.command.TravelCommand travelCommand;
     private ConfigManager configManager;
     private Text text;
     private ProgressDatabase database;
@@ -77,6 +78,8 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
             database = new ProgressDatabase(this, configManager.settings().databaseFile());
             database.open();
             progress = createProgress(database.load());
+            travelCommand = new com.onemillioncrops.command.TravelCommand(this,
+                    new com.onemillioncrops.data.TravelStore(getDataFolder().toPath().resolve("travel.db")));
         } catch (Exception exception) {
             getLogger().log(Level.SEVERE, "OneMillionCrops could not start", exception);
             getServer().getPluginManager().disablePlugin(this);
@@ -117,9 +120,13 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
 
     private void registerCommands() {
         UtilityCommand utility = new UtilityCommand(this);
-        for (String name : java.util.List.of("gms", "gmc", "gmsp", "tp")) {
+        for (String name : java.util.List.of("gms", "gmc", "gmsp", "tp", "tphere")) {
             Objects.requireNonNull(getCommand(name)).setExecutor(utility);
             Objects.requireNonNull(getCommand(name)).setTabCompleter(utility);
+        }
+        for (String name : java.util.List.of("spawn", "setspawn", "home", "sethome", "delhome", "warp", "setwarp", "delwarp")) {
+            Objects.requireNonNull(getCommand(name)).setExecutor(travelCommand);
+            Objects.requireNonNull(getCommand(name)).setTabCompleter(travelCommand);
         }
         MainCommand main = new MainCommand(this);
         Objects.requireNonNull(getCommand("1mill")).setExecutor(main);
@@ -511,6 +518,13 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         shuttingDown = true;
+        if (travelCommand != null) {
+            try {
+                travelCommand.close();
+            } catch (Exception exception) {
+                getLogger().log(Level.SEVERE, "Could not close travel locations", exception);
+            }
+        }
         unregisterPlaceholders.run();
         unregisterPlaceholders = () -> { };
         if (autosaveTask != null) {

@@ -46,9 +46,9 @@ final class SummaryActionServiceTest {
     @Test
     void stylesOnlyNewPersonalBestAmounts() {
         assertEquals(List.of(
-                        "<#FFD166><bold>1,234</bold></#FFD166> "
-                                + "<dark_gray>(</dark_gray><#8CE99A>NEW PB</#8CE99A><dark_gray>)</dark_gray>",
-                        "<#8CE99A><bold>500</bold></#8CE99A>"),
+                        "<#FFC2DE><bold>1,234</bold></#FFC2DE> "
+                                + "<dark_gray>(</dark_gray><#FF8FBD>NEW PB</#FF8FBD><dark_gray>)</dark_gray>",
+                        "<#FF8FBD><bold>500</bold></#FF8FBD>"),
                 SummaryActionService.expand("%amount-display%", List.of(
                         new SummaryActionService.SummaryEntry("Alex", 1_234L, true),
                         new SummaryActionService.SummaryEntry("Sam", 500L, false)

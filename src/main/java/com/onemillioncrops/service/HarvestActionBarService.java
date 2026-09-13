@@ -64,7 +64,7 @@ public final class HarvestActionBarService {
             if (!first) {
                 entries.append(" <dark_gray>•</dark_gray> ");
             }
-            entries.append("<#8CE99A><bold>HARVEST</bold></#8CE99A> <white><bold>")
+            entries.append("<#FF8FBD><bold>HARVEST</bold></#FF8FBD> <white><bold>")
                     .append(entry.amount()).append("</bold></white> ")
                     .append(entry.crop().displayMiniMessage());
             first = false;

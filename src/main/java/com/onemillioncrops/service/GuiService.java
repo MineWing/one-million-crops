@@ -34,9 +34,9 @@ public final class GuiService {
             45, 46, 47, 48, 49, 50, 51, 52, 53
     };
     private static final Material[] ANIMATION = {
-            Material.LIME_STAINED_GLASS_PANE,
-            Material.YELLOW_STAINED_GLASS_PANE,
-            Material.LIGHT_BLUE_STAINED_GLASS_PANE,
+            Material.PINK_STAINED_GLASS_PANE,
+            Material.MAGENTA_STAINED_GLASS_PANE,
+            Material.WHITE_STAINED_GLASS_PANE,
             Material.PURPLE_STAINED_GLASS_PANE
     };
 
@@ -70,7 +70,7 @@ public final class GuiService {
         int page = Math.clamp(requestedPage, 0, pages - 1);
         ProgressGuiHolder holder = new ProgressGuiHolder(page);
         Inventory inventory = Bukkit.createInventory(holder, 54, plugin.text().parse(
-                "<gradient:#55ff55:#ffd54a><bold>One Million Crops</bold></gradient> <dark_gray>•</dark_gray> <gray>" +
+                "<gradient:#FF8FBD:#FFC2DE><bold>Crops • Season 2</bold></gradient> <dark_gray>•</dark_gray> <gray>" +
                         (page + 1) + "/" + pages));
         holder.inventory(inventory);
 
@@ -112,7 +112,7 @@ public final class GuiService {
         int page = Math.clamp(requestedPage, 0, pages - 1);
         CropToggleGuiHolder holder = new CropToggleGuiHolder(page);
         Inventory inventory = Bukkit.createInventory(holder, 54, plugin.text().parse(
-                "<gradient:#55ff55:#ffd54a><bold>Crop Toggles</bold></gradient> <dark_gray>•</dark_gray> <gray>" +
+                "<gradient:#FF8FBD:#FFC2DE><bold>Crop Toggles</bold></gradient> <dark_gray>•</dark_gray> <gray>" +
                         (page + 1) + "/" + pages));
         holder.inventory(inventory);
 
@@ -233,7 +233,7 @@ public final class GuiService {
         int configured = plugin.configManager().configuredCrops().size();
         int enabled = plugin.configManager().crops().size();
         ItemStack item = simpleItem(Material.COMPARATOR,
-                "<gradient:#55ff55:#ffd54a><bold>Crop Controls</bold></gradient>");
+                "<gradient:#FF8FBD:#FFC2DE><bold>Crop Controls</bold></gradient>");
         ItemMeta meta = item.getItemMeta();
         meta.lore(lore("gui.crop-toggle.summary", Map.of(
                 "enabled", Integer.toString(enabled),
@@ -268,7 +268,7 @@ public final class GuiService {
                 "remaining", Text.number(Math.max(0, target - amount)),
                 "contribution", Text.number(own),
                 "status", done
-                        ? "<gradient:#55ff55:#ffd54a><bold>✦ CHALLENGE COMPLETE ✦</bold></gradient>"
+                        ? "<gradient:#FF8FBD:#FFC2DE><bold>✦ CHALLENGE COMPLETE ✦</bold></gradient>"
                         : "<dark_gray>│ Every collected item counts as one.</dark_gray>"
         )));
         if (done) {
@@ -285,7 +285,7 @@ public final class GuiService {
         long target = saturatingMultiply(plugin.progress().target(), totalCrops);
         long amount = plugin.progress().crops().keySet().stream().mapToLong(plugin.progress()::amount)
                 .reduce(0L, GuiService::saturatingAdd);
-        ItemStack item = simpleItem(Material.NETHER_STAR, "<gradient:#55ff55:#ffd54a><bold>Team Progress</bold></gradient>");
+        ItemStack item = simpleItem(Material.NETHER_STAR, "<gradient:#FF8FBD:#FFC2DE><bold>Team Progress</bold></gradient>");
         ItemMeta meta = item.getItemMeta();
         meta.lore(lore("gui.progress.overall", Map.of(
                 "bar", Text.progressBar(amount, target, 20),

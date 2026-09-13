@@ -29,7 +29,7 @@ import java.util.UUID;
 
 public final class ConfigManager {
     static final String MESSAGE_PALETTE_VERSION_KEY = "message-palette-version";
-    static final int CURRENT_MESSAGE_PALETTE_VERSION = 1;
+    static final int CURRENT_MESSAGE_PALETTE_VERSION = 2;
 
     private final JavaPlugin plugin;
     private PluginSettings settings;
@@ -57,7 +57,18 @@ public final class ConfigManager {
 
     public LoadedConfiguration read() {
         var config = YamlConfiguration.loadConfiguration(new File(plugin.getDataFolder(), "config.yml"));
-        long target = Math.max(1L, config.getLong("challenge.target-per-crop", 1_000_000L));
+        if (applySeasonTwoDefaults(config)) {
+            try {
+                Path original = plugin.getDataFolder().toPath().resolve("config.yml");
+                Path backup = plugin.getDataFolder().toPath().resolve("config-before-season-2.yml");
+                if (Files.exists(original) && !Files.exists(backup)) Files.copy(original, backup);
+                config.save(original.toFile());
+                plugin.getLogger().info("Season 2 configured: 200,000 crops per target and pink accents.");
+            } catch (IOException exception) {
+                throw new IllegalStateException("Could not save Season 2 configuration", exception);
+            }
+        }
+        long target = Math.max(1L, config.getLong("challenge.target-per-crop", 200_000L));
         PluginSettings.ParticipantMode participantMode;
         try {
             participantMode = PluginSettings.ParticipantMode.valueOf(
@@ -124,7 +135,7 @@ public final class ConfigManager {
                 Math.clamp(config.getInt("scoreboard.crops-per-page", 7), 1, 8),
                 Math.clamp(config.getInt("scoreboard.title-animation-frames", 40), 4, 200),
                 nonEmpty(config.getStringList("scoreboard.title-frames"),
-                        List.of("<gradient:#55ff55:#ffd54a><bold>1,000,000 CROPS</bold></gradient>")),
+                        List.of("<gradient:#FF8FBD:#FFC2DE><bold>CROPS • SEASON 2</bold></gradient>")),
                 Math.max(1, config.getInt("gui.animation-ticks", 5)),
                 config.getBoolean("gui.pickup-sound", false),
                 nonEmpty(config.getIntegerList("celebration.milestones"), List.of(25, 50, 75, 90)),
@@ -162,6 +173,15 @@ public final class ConfigManager {
                 cropMaps.enabledIds(), cropMaps.byItem(), loadedHarvestSummary, loadedMessages);
     }
 
+    static boolean applySeasonTwoDefaults(YamlConfiguration config) {
+        if (config.getInt("challenge.season", 1) >= 2) return false;
+        config.set("challenge.season", 2);
+        config.set("challenge.target-per-crop", 200_000L);
+        config.set("scoreboard.title-frames", List.of(
+                "<b><gradient:#FF8FBD:#FFC2DE:#FFE1EE>CROPS • SEASON 2</gradient></b>"));
+        return true;
+    }
+
     private YamlConfiguration bundledMessages() {
         InputStream bundled = plugin.getResource("messages.yml");
         if (bundled == null) {
@@ -180,6 +200,8 @@ public final class ConfigManager {
             return;
         }
         try {
+            Path backup = messagesFile.toPath().resolveSibling("messages-before-season-2.yml");
+            if (messagesFile.exists() && !Files.exists(backup)) Files.copy(messagesFile.toPath(), backup);
             messages.save(messagesFile);
             plugin.getLogger().info("Updated messages.yml to the unified Crops message palette.");
         } catch (IOException exception) {
@@ -193,6 +215,14 @@ public final class ConfigManager {
             return false;
         }
 
+        for (var entry : new LinkedHashMap<>(messages.getValues(true)).entrySet()) {
+            if (entry.getValue() instanceof String value) {
+                messages.set(entry.getKey(), seasonTwoAccent(value));
+            } else if (entry.getValue() instanceof List<?> values) {
+                messages.set(entry.getKey(), values.stream().map(value -> value instanceof String text
+                        ? seasonTwoAccent(text) : value).toList());
+            }
+        }
         messages.set("prefix", bundled.getString("prefix", ""));
         for (String key : bundled.getKeys(false)) {
             String actionsPath = key + ".actions";
@@ -202,6 +232,10 @@ public final class ConfigManager {
         }
         messages.set(MESSAGE_PALETTE_VERSION_KEY, CURRENT_MESSAGE_PALETTE_VERSION);
         return true;
+    }
+
+    private static String seasonTwoAccent(String value) {
+        return value.replace("#8CE99A", "#FF8FBD").replace("#FFD166", "#FFC2DE");
     }
 
     private void migrateHarvestSummary(YamlConfiguration loadedMessages, File messagesFile) {

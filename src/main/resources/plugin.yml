@@ -1,5 +1,5 @@
 name: OneMillionCrops
-version: '1.0.21-folia'
+version: '1.0.22-folia'
 main: com.onemillioncrops.OneMillionCropsPlugin
 api-version: '1.21.11'
 authors: [Alex]
@@ -26,10 +26,56 @@ commands:
     usage: /gmsp
     permission: onemillion.gamemode
   tp:
-    description: Teleport to a player or bring a player here
-    usage: /tp <player> or /tp here <player>
+    description: Teleport to a player
+    usage: /tp <player>
     permission: onemillion.teleport
+  tphere:
+    description: Bring a player to you
+    usage: /tphere <player>
+    permission: onemillion.teleport
+  spawn:
+    description: Travel to spawn
+    usage: /spawn
+    permission: onemillion.spawn
+  setspawn:
+    description: Save the server travel spawn
+    usage: /setspawn
+    permission: onemillion.setspawn
+  home:
+    description: Travel to a personal home
+    usage: /home [name]
+    permission: onemillion.home
+  sethome:
+    description: Save a personal home
+    usage: /sethome [name]
+    permission: onemillion.home
+  delhome:
+    description: Delete a personal home
+    usage: /delhome [name]
+    permission: onemillion.home
+  warp:
+    description: Travel to a shared warp or list warps
+    usage: /warp [name]
+    permission: onemillion.warp
+  setwarp:
+    description: Save a shared warp
+    usage: /setwarp <name>
+    permission: onemillion.warp.admin
+  delwarp:
+    description: Delete a shared warp
+    usage: /delwarp <name>
+    permission: onemillion.warp.admin
 permissions:
+  onemillion.spawn:
+    default: true
+  onemillion.home:
+    default: true
+  onemillion.warp:
+    default: true
+  onemillion.setspawn:
+    default: op
+  onemillion.warp.admin:
+    default: op
   onemillion.gamemode:
     description: Use the survival, creative and spectator shortcuts
     default: op

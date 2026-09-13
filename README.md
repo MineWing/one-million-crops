@@ -19,11 +19,11 @@
   <a href="#live-web-dashboard">Web dashboard</a>
 </p>
 
-OneMillionCrops is a server-wide Paper and Folia challenge where everyone contributes toward collecting a configurable target—one million by default—of every enabled crop. Progress is persistent, celebrations are shared, and careful provenance tracking keeps automated farms useful without allowing the same stack to be counted repeatedly.
+OneMillionCrops is a server-wide Paper and Folia challenge where everyone contributes toward collecting a configurable target—200,000 per crop in Season 2—of every enabled crop. Progress is persistent, celebrations are shared, and careful provenance tracking keeps automated farms useful without allowing the same stack to be counted repeatedly.
 
 ## Folia version
 
-`OneMillionCrops-1.0.21-folia.jar` supports Folia and Paper 1.21.11 with Java 21 or newer. Install only one OneMillionCrops JAR. The plugin keeps the existing `OneMillionCrops` data folder and SQLite format.
+`OneMillionCrops-1.0.22-folia.jar` supports Folia and Paper 1.21.11 with Java 21 or newer. Install only one OneMillionCrops JAR. The plugin keeps the existing `OneMillionCrops` data folder and SQLite format.
 
 Player menus, action bars and effects run on the player's entity scheduler. Cocoa replanting runs on the target region scheduler. Global timers coordinate refreshes and autosaves; database saves use the async scheduler. Harvest summaries and dashboard state are synchronized across regions.
 
@@ -34,7 +34,7 @@ Folia differences:
 - Install Folia-compatible versions of optional integrations such as PlaceholderAPI.
 - Restart the server when installing this build. `/1mill reload` reloads configuration only.
 
-Build with `mvn package`. The shaded JAR in `target/` includes SQLite. All 75 tests pass, covering scheduler routing, disconnected recipients and simultaneous harvests. An isolated Folia 1.21.11 build 14 server passed startup, status, summary, configuration reload and dashboard API checks. Multi-player gameplay testing is still needed for menus, planting and cocoa farms across region boundaries.
+Build with `mvn package`. The shaded JAR in `target/` includes SQLite. All 86 tests pass, covering scheduler routing, disconnected recipients and simultaneous harvests. An isolated Folia 1.21.11 build 14 server passed startup, status, summary, configuration reload and dashboard API checks. Multi-player gameplay testing is still needed for menus, planting and cocoa farms across region boundaries.
 
 ## Built for a truly shared challenge
 
@@ -173,6 +173,33 @@ The test suite covers target clamping, milestone transitions, contribution track
 
 - `/gms`, `/gmc`, `/gmsp` switch your own mode to survival, creative or spectator. Requires `onemillion.gamemode`.
 - `/tp <player>` teleports you to an online player.
-- `/tp here <player>` brings that player to your current location. Requires `onemillion.teleport`.
+- `/tphere <player>` brings that player to your current location. Requires `onemillion.teleport`.
 
-Both permissions default to operators. Teleports use Folia's asynchronous teleport API and report cancelled or failed moves. Player names support tab completion. These shortcuts are player-only. The plugin's `/tp` handles these two forms; use `/minecraft:tp` for vanilla coordinates and selectors. If another plugin owns `/tp`, use `/onemillioncrops:tp`.
+Both permissions default to operators. Teleports use Folia's asynchronous teleport API and report cancelled or failed moves. Player names support tab completion. These shortcuts are player-only. The plugin's `/tp` accepts a player name; use `/minecraft:tp` for vanilla coordinates and selectors. If another plugin owns `/tp`, use `/onemillioncrops:tp`.
+
+## Spawn, homes and warps
+
+| Command | Purpose | Default access |
+| --- | --- | --- |
+| `/setspawn` | Save your position and facing as the server's `/spawn` destination | Operators |
+| `/spawn` | Travel to the saved spawn | Everyone |
+| `/sethome [name]` | Save or overwrite one of your homes | Everyone |
+| `/home [name]` | Travel to one of your homes | Everyone |
+| `/delhome [name]` | Remove one of your homes | Everyone |
+| `/setwarp <name>` | Save or overwrite a shared warp | Operators |
+| `/warp [name]` | Visit a warp, or list warps without a name | Everyone |
+| `/delwarp <name>` | Remove a shared warp | Operators |
+
+Omitting a home name uses `home`. Names ignore case and accept 1 to 32 letters, numbers, underscores or hyphens. Saved names support tab completion; homes are scoped to each player's UUID. Setting a location again overwrites it.
+
+Permissions are `onemillion.spawn`, `onemillion.setspawn`, `onemillion.home`, `onemillion.warp`, and `onemillion.warp.admin`. These commands require a player. `/setspawn` sets the `/spawn` destination; it does not change beds, death respawns or first-join behavior.
+
+Locations, world UUIDs and facing are saved in `OneMillionCrops/travel.db`. Back up this file along with `progress.db`; `/1mill backup` backs up crop progress only. Database work runs on an ordered background worker, and shutdown drains accepted writes. Teleporting to an unloaded world reports an error.
+
+Utility and travel commands use pink-and-blush MiniMessage text, chimes and particles. Successful teleports add an end-rod ring, portal particles and a teleport sound for the traveler. Failed or cancelled teleports use error feedback without arrival effects.
+
+## Season 2
+
+The target is **200,000 per crop**. Messages use pink and blush accents with neutral body text; crop colours remain distinct. The menu border and title also use the Season 2 palette.
+
+The first load upgrades older configuration to `challenge.season: 2` and a target of 200,000, and refreshes the message palette. Previous config and messages files are preserved as `config-before-season-2.yml` and `messages-before-season-2.yml`. Subsequent reloads respect your configured target. This update does not reset crop progress or saved travel locations.

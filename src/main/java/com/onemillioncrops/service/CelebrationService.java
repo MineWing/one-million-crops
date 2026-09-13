@@ -77,6 +77,7 @@ public final class CelebrationService {
         plugin.actions().execute(grandFinale ? "finale-celebration" : "crop-celebration",
                 List.of(player), List.of(player), List.of(), Map.of(
                         "crop", crop.displayMiniMessage(),
+                        "target", com.onemillioncrops.util.Text.number(plugin.progress().target()),
                         "sound", settings.completionSound(),
                         "volume", Float.toString(settings.completionVolume()),
                         "pitch", Float.toString(settings.completionPitch()),

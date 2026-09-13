@@ -150,4 +150,28 @@ final class MessagesConfigurationTest {
         assertEquals(60, installed.getInt("harvestSummary.amount"));
         assertFalse(ConfigManager.applyMessagePalette(installed, bundled));
     }
+    @org.junit.jupiter.api.Test
+    void seasonTwoMigrationSetsTargetOnceAndPreservesOtherSettings() {
+        var config = new YamlConfiguration();
+        config.set("challenge.target-per-crop", 1_000_000L);
+        config.set("storage.database-file", "custom.db");
+        assertTrue(ConfigManager.applySeasonTwoDefaults(config));
+        assertEquals(200_000L, config.getLong("challenge.target-per-crop"));
+        assertEquals(2, config.getInt("challenge.season"));
+        assertEquals("custom.db", config.getString("storage.database-file"));
+        assertTrue(config.getStringList("scoreboard.title-frames").getFirst().contains("#FF8FBD"));
+        config.set("challenge.target-per-crop", 250_000L);
+        assertFalse(ConfigManager.applySeasonTwoDefaults(config));
+        assertEquals(250_000L, config.getLong("challenge.target-per-crop"));
+    }
+
+    @org.junit.jupiter.api.Test
+    void bundledSeasonTwoDefaultsUsePinkAccentsAndDynamicCompletionTarget() {
+        var resource = Objects.requireNonNull(getClass().getResourceAsStream("/messages.yml"));
+        var messages = YamlConfiguration.loadConfiguration(new InputStreamReader(resource, StandardCharsets.UTF_8));
+        assertEquals(2, messages.getInt("message-palette-version"));
+        assertTrue(messages.getString("prefix").contains("#FF8FBD"));
+        assertTrue(messages.getStringList("crop-celebration.actions").stream()
+                .anyMatch(action -> action.contains("%target%")));
+    }
 }
