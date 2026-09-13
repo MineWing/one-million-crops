@@ -1,5 +1,6 @@
 package com.onemillioncrops.service;
 
+import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.model.CropDefinition;
 import org.bukkit.Bukkit;
@@ -50,10 +51,10 @@ public final class CelebrationService {
 
     public void playPending(Player player) {
         UUID playerId = player.getUniqueId();
-        Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, () -> {
+        Tasks.asyncLater(plugin, () -> {
             try {
                 var pending = plugin.database().pendingCelebrations(playerId);
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                Tasks.player(plugin, player, () -> {
                     if (!player.isOnline()) {
                         return;
                     }
@@ -85,7 +86,7 @@ public final class CelebrationService {
     }
 
     private void clearPendingAsync(UUID player, String cropId) {
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        Tasks.async(plugin, () -> {
             try {
                 plugin.database().clearPending(player, cropId);
             } catch (SQLException exception) {

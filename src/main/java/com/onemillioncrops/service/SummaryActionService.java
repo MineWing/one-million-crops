@@ -1,5 +1,6 @@
 package com.onemillioncrops.service;
 
+import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.util.SoundResolver;
 import com.onemillioncrops.util.Text;
@@ -72,7 +73,21 @@ public final class SummaryActionService {
             }
             List<String> payloads = expandRows(action.payload(), rows, common);
             for (String payload : payloads) {
-                execute(action.tag(), payload, recipients, players);
+                if (action.tag().equals("broadcast")) {
+                    execute(action.tag(), payload, recipients, players);
+                } else if (action.tag().equals("message")) {
+                    for (Audience recipient : recipients) {
+                        if (recipient instanceof Player player) {
+                            Tasks.player(plugin, player, () -> execute(action.tag(), payload, List.of(player), List.of()));
+                        } else {
+                            execute(action.tag(), payload, List.of(recipient), List.of());
+                        }
+                    }
+                } else {
+                    for (Player player : players) {
+                        Tasks.player(plugin, player, () -> execute(action.tag(), payload, List.of(player), List.of(player)));
+                    }
+                }
             }
         }
     }
@@ -126,8 +141,8 @@ public final class SummaryActionService {
         float progress = arguments.length >= 5 ? rangedFloat(arguments[4], "progress", 0.0f, 1.0f) : 1.0f;
         BossBar bossBar = BossBar.bossBar(plugin.text().parse(text), progress, color, overlay);
         recipients.forEach(player -> player.showBossBar(bossBar));
-        Bukkit.getScheduler().runTaskLater(plugin,
-                () -> recipients.forEach(player -> player.hideBossBar(bossBar)), seconds * 20L);
+        recipients.forEach(player -> Tasks.playerLater(plugin, player,
+                () -> player.hideBossBar(bossBar), seconds * 20L));
     }
 
     private void showTitle(String payload, List<Player> recipients) {
@@ -176,9 +191,8 @@ public final class SummaryActionService {
         int gapTicks = arguments.length >= 5 ? nonNegativeInt(arguments[4], "firework gap ticks") : 10;
         for (int index = 0; index < count; index++) {
             long delay = (long) index * gapTicks;
-            Bukkit.getScheduler().runTaskLater(plugin,
-                    () -> recipients.stream().filter(Player::isOnline)
-                            .forEach(player -> spawnFirework(player, colors, type, power)), delay);
+            recipients.forEach(player -> Tasks.playerLater(plugin, player,
+                    () -> spawnFirework(player, colors, type, power), delay));
         }
     }
 

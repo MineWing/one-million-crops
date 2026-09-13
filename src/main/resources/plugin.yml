@@ -1,5 +1,5 @@
 name: OneMillionCrops
-version: '1.0.19'
+version: '1.0.20-folia'
 main: com.onemillioncrops.OneMillionCropsPlugin
 api-version: '1.21.11'
 authors: [Alex]
@@ -26,3 +26,5 @@ permissions:
   onemillion.admin:
     description: Reset, reload, back up, and manage the challenge
     default: op
+
+folia-supported: true

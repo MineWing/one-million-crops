@@ -1,5 +1,6 @@
 package com.onemillioncrops;
 
+import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.command.MainCommand;
 import com.onemillioncrops.command.ProgressCommand;
 import com.onemillioncrops.config.ConfigManager;
@@ -26,7 +27,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.Sound;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitTask;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -43,7 +44,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
     private ConfigManager configManager;
     private Text text;
     private ProgressDatabase database;
-    private ProgressService progress;
+    private volatile ProgressService progress;
     private ScoreboardService scoreboards;
     private GuiService gui;
     private HarvestActionBarService harvestActionBar;
@@ -53,8 +54,9 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
     private WebDashboardService dashboard;
     private CropWandListener cropWand;
     private PlantWandListener plantWand;
-    private BukkitTask autosaveTask;
-    private BukkitTask visualRefreshTask;
+    private ScheduledTask autosaveTask;
+    private volatile ScheduledTask visualRefreshTask;
+    private final AtomicBoolean visualRefreshPending = new AtomicBoolean();
     private Runnable unregisterPlaceholders = () -> { };
     private volatile boolean maintenance;
     private volatile boolean resetDatabaseStarted;
@@ -161,6 +163,9 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
 
     private ProgressService.IncrementResult addProgress(java.util.UUID player, CropDefinition crop, int amount) {
         synchronized (stateLock) {
+            if (maintenance || shuttingDown) {
+                return ProgressService.IncrementResult.NONE;
+            }
             ProgressService.IncrementResult result = player == null
                     ? progress.addUnattributed(crop.id(), amount)
                     : progress.add(player, crop.id(), amount);
@@ -190,7 +195,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         }
         configManager.ensureResources();
         String databaseFile = configManager.settings().databaseFile();
-        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+        Tasks.async(this, () -> {
             try {
                 ConfigManager.LoadedConfiguration loaded = configManager.read();
                 ProgressSnapshot snapshot;
@@ -237,7 +242,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
             return;
         }
         sendActions("crop-toggle-updating", player, Map.of("crop", crop.displayMiniMessage()));
-        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+        Tasks.async(this, () -> {
             try {
                 ConfigManager.LoadedConfiguration loaded;
                 ProgressSnapshot snapshot;
@@ -274,7 +279,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
             return;
         }
         boolean enable = !configManager.settings().allowAutomatedFarms();
-        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+        Tasks.async(this, () -> {
             try {
                 ConfigManager.LoadedConfiguration loaded = configManager.setAllowAutomatedFarms(enable);
                 runSyncIfActive(() -> {
@@ -296,7 +301,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         if (!beginOperation(sender, false)) {
             return;
         }
-        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+        Tasks.async(this, () -> {
             try {
                 Path path;
                 synchronized (persistenceLock) {
@@ -329,7 +334,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         if (!beginOperation(sender, true)) {
             return;
         }
-        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
+        Tasks.async(this, () -> {
             try {
                 synchronized (persistenceLock) {
                     resetDatabaseStarted = true;
@@ -377,14 +382,14 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
             autosaveTask.cancel();
         }
         long period = configManager.settings().autosaveSeconds() * 20L;
-        autosaveTask = Bukkit.getScheduler().runTaskTimer(this, this::requestSave, period, period);
+        autosaveTask = Tasks.globalTimer(this, this::requestSave, period, period);
     }
 
     private void requestSave() {
         if (maintenance || shuttingDown || !persistenceRunning.compareAndSet(false, true)) {
             return;
         }
-        Bukkit.getScheduler().runTaskAsynchronously(this, this::drainSaves);
+        Tasks.async(this, this::drainSaves);
     }
 
     private void drainSaves() {
@@ -466,7 +471,9 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
             return false;
         }
         if (pauseCounting) {
-            maintenance = true;
+            synchronized (stateLock) {
+                maintenance = true;
+            }
         }
         return true;
     }
@@ -479,16 +486,17 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
 
     private void runSyncIfActive(Runnable action) {
         if (!shuttingDown && isEnabled()) {
-            Bukkit.getScheduler().runTask(this, action);
+            Tasks.global(this, action);
         }
     }
 
     private void requestVisualRefresh() {
-        if (visualRefreshTask != null) {
+        if (!visualRefreshPending.compareAndSet(false, true)) {
             return;
         }
-        visualRefreshTask = Bukkit.getScheduler().runTaskLater(this, () -> {
+        visualRefreshTask = Tasks.globalLater(this, () -> {
             visualRefreshTask = null;
+            visualRefreshPending.set(false);
             gui.refreshOpen();
             dashboard.refreshNow();
         }, 1L);

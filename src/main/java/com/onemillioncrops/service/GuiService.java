@@ -1,5 +1,6 @@
 package com.onemillioncrops.service;
 
+import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.gui.CropToggleGuiHolder;
 import com.onemillioncrops.gui.ProgressGuiHolder;
@@ -15,7 +16,7 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.scheduler.BukkitTask;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,8 +41,8 @@ public final class GuiService {
     };
 
     private final OneMillionCropsPlugin plugin;
-    private BukkitTask animationTask;
-    private int animationFrame;
+    private ScheduledTask animationTask;
+    private volatile int animationFrame;
 
     public GuiService(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
@@ -49,14 +50,16 @@ public final class GuiService {
 
     public void start() {
         stop();
-        animationTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+        animationTask = Tasks.globalTimer(plugin, () -> {
             animationFrame++;
             for (Player player : Bukkit.getOnlinePlayers()) {
-                if (player.getOpenInventory().getTopInventory().getHolder(false) instanceof ProgressGuiHolder holder) {
-                    animateBorder(holder.getInventory());
-                } else if (player.getOpenInventory().getTopInventory().getHolder(false) instanceof CropToggleGuiHolder holder) {
-                    animateBorder(holder.getInventory());
-                }
+                Tasks.player(plugin, player, () -> {
+                    if (player.getOpenInventory().getTopInventory().getHolder(false) instanceof ProgressGuiHolder holder) {
+                        animateBorder(holder.getInventory());
+                    } else if (player.getOpenInventory().getTopInventory().getHolder(false) instanceof CropToggleGuiHolder holder) {
+                        animateBorder(holder.getInventory());
+                    }
+                });
             }
         }, 1L, plugin.configManager().settings().guiAnimationTicks());
     }
@@ -132,11 +135,13 @@ public final class GuiService {
 
     public void refreshOpen() {
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (player.getOpenInventory().getTopInventory().getHolder(false) instanceof ProgressGuiHolder holder) {
-                refreshInventory(player, holder);
-            } else if (player.getOpenInventory().getTopInventory().getHolder(false) instanceof CropToggleGuiHolder holder) {
-                refreshToggleInventory(holder);
-            }
+            Tasks.player(plugin, player, () -> {
+                if (player.getOpenInventory().getTopInventory().getHolder(false) instanceof ProgressGuiHolder holder) {
+                    refreshInventory(player, holder);
+                } else if (player.getOpenInventory().getTopInventory().getHolder(false) instanceof CropToggleGuiHolder holder) {
+                    refreshToggleInventory(holder);
+                }
+            });
         }
     }
 

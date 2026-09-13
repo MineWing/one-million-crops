@@ -48,6 +48,10 @@ public final class MainCommand implements CommandExecutor, TabCompleter {
             if (!(sender instanceof Player player)) {
                 plugin.sendActions("player-only", sender, Map.of());
             } else {
+                if (com.onemillioncrops.util.Tasks.isFolia()) {
+                    player.sendMessage(plugin.text().parse("<yellow>The sidebar is unavailable on Folia. Use /progress or /1mill web.</yellow>"));
+                    return true;
+                }
                 boolean enabled = plugin.scoreboards().toggle(player);
                 plugin.sendActions(enabled ? "scoreboard-on" : "scoreboard-off", sender, Map.of());
             }

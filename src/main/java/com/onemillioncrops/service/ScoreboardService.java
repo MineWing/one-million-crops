@@ -1,5 +1,6 @@
 package com.onemillioncrops.service;
 
+import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.model.CropDefinition;
 import com.onemillioncrops.util.Text;
@@ -7,7 +8,7 @@ import io.papermc.paper.scoreboard.numbers.NumberFormat;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitTask;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import org.bukkit.scoreboard.Criteria;
 import org.bukkit.scoreboard.DisplaySlot;
 import org.bukkit.scoreboard.Objective;
@@ -32,7 +33,7 @@ public final class ScoreboardService {
     private final Map<UUID, Scoreboard> previous = new HashMap<>();
     private final Set<UUID> hidden = new HashSet<>();
     private List<Component> titleFrames = List.of(Component.text("One Million Crops"));
-    private BukkitTask animationTask;
+    private ScheduledTask animationTask;
     private long animationTick;
     private int dataRefreshTicks;
 
@@ -41,6 +42,10 @@ public final class ScoreboardService {
     }
 
     public void start() {
+        if (Tasks.isFolia()) {
+            plugin.getLogger().info("Sidebar disabled on Folia; use /progress or /1mill web.");
+            return;
+        }
         stopTask();
         animationTick = 0;
         dataRefreshTicks = 0;
@@ -48,13 +53,14 @@ public final class ScoreboardService {
                 plugin.configManager().settings().scoreboardTitleFrames(),
                 plugin.configManager().settings().scoreboardTitleAnimationFrames());
         int period = plugin.configManager().settings().scoreboardAnimationTicks();
-        animationTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> animate(period), 1L, period);
+        animationTask = Tasks.globalTimer(plugin, () -> animate(period), 1L, period);
         for (Player player : Bukkit.getOnlinePlayers()) {
             showIfEnabled(player);
         }
     }
 
     public void showIfEnabled(Player player) {
+        if (Tasks.isFolia()) return;
         if (!plugin.configManager().settings().scoreboardEnabled() || hidden.contains(player.getUniqueId())) {
             return;
         }
@@ -65,6 +71,7 @@ public final class ScoreboardService {
     }
 
     public boolean toggle(Player player) {
+        if (Tasks.isFolia()) return false;
         UUID uuid = player.getUniqueId();
         if (boards.containsKey(uuid) && !hidden.contains(uuid)) {
             hidden.add(uuid);
@@ -78,6 +85,7 @@ public final class ScoreboardService {
     }
 
     public void updateAll() {
+        if (Tasks.isFolia()) return;
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (!hidden.contains(player.getUniqueId())) {
                 showIfEnabled(player);
@@ -86,6 +94,7 @@ public final class ScoreboardService {
     }
 
     public void update(Player player) {
+        if (Tasks.isFolia()) return;
         PlayerBoard playerBoard = boards.get(player.getUniqueId());
         if (playerBoard == null || hidden.contains(player.getUniqueId())) {
             return;
@@ -216,11 +225,13 @@ public final class ScoreboardService {
     }
 
     public void remove(Player player) {
+        if (Tasks.isFolia()) return;
         boards.remove(player.getUniqueId());
         previous.remove(player.getUniqueId());
     }
 
     public void stop() {
+        if (Tasks.isFolia()) return;
         stopTask();
         for (Player player : Bukkit.getOnlinePlayers()) {
             Scoreboard old = previous.get(player.getUniqueId());

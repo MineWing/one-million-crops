@@ -1,5 +1,6 @@
 package com.onemillioncrops.listener;
 
+import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.model.CropDefinition;
 import com.onemillioncrops.service.PlacedSourceTracker;
@@ -351,7 +352,7 @@ public final class CropPickupListener implements Listener {
     }
 
     private void scheduleContainerHarvest(Player player) {
-        Bukkit.getScheduler().runTask(plugin, () -> consumeContainerHarvests(player));
+        Tasks.playerLater(plugin, player, () -> consumeContainerHarvests(player), 1L);
     }
 
     private void consumeContainerHarvests(Player player) {

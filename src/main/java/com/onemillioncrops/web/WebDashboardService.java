@@ -1,5 +1,6 @@
 package com.onemillioncrops.web;
 
+import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.config.PluginSettings;
 import com.onemillioncrops.model.CropDefinition;
@@ -11,7 +12,7 @@ import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitTask;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -52,7 +53,7 @@ public final class WebDashboardService {
     private volatile String snapshotJson = "{\"ready\":false}";
     private HttpServer server;
     private ExecutorService executor;
-    private BukkitTask refreshTask;
+    private ScheduledTask refreshTask;
     private long lastHistorySample;
     private String publicUrl = "";
 
@@ -60,7 +61,7 @@ public final class WebDashboardService {
         this.plugin = plugin;
     }
 
-    public void start() {
+    public synchronized void start() {
         stop();
         PluginSettings settings = plugin.configManager().settings();
         if (!settings.webEnabled()) {
@@ -78,7 +79,7 @@ public final class WebDashboardService {
             server.setExecutor(executor);
             server.start();
             publicUrl = determinePublicUrl(settings);
-            refreshTask = Bukkit.getScheduler().runTaskTimer(plugin, this::refreshNow,
+            refreshTask = Tasks.globalTimer(plugin, this::refreshNow,
                     settings.webRefreshTicks(), settings.webRefreshTicks());
             plugin.getLogger().info("Live dashboard listening at " + publicUrl);
         } catch (IOException | IllegalArgumentException exception) {
@@ -88,11 +89,11 @@ public final class WebDashboardService {
         }
     }
 
-    public void restart() {
+    public synchronized void restart() {
         start();
     }
 
-    public void stop() {
+    public synchronized void stop() {
         if (refreshTask != null) {
             refreshTask.cancel();
             refreshTask = null;
@@ -110,20 +111,20 @@ public final class WebDashboardService {
         publicUrl = "";
     }
 
-    public void recordPickup(Player player, CropDefinition crop, long amount) {
+    public synchronized void recordPickup(Player player, CropDefinition crop, long amount) {
         playerNames.put(player.getUniqueId(), player.getName());
         activity.addFirst(new Activity(ids.incrementAndGet(), System.currentTimeMillis(), player.getName(),
                 crop.id(), displayName(crop), amount, "pickup"));
         trimActivity();
     }
 
-    public void recordAutomatedPickup(CropDefinition crop, long amount) {
+    public synchronized void recordAutomatedPickup(CropDefinition crop, long amount) {
         activity.addFirst(new Activity(ids.incrementAndGet(), System.currentTimeMillis(), "Automatic farm",
                 crop.id(), displayName(crop), amount, "pickup"));
         trimActivity();
     }
 
-    public void recordReset(CropDefinition crop) {
+    public synchronized void recordReset(CropDefinition crop) {
         String cropId = crop == null ? "all" : crop.id();
         String cropName = crop == null ? "All crops" : displayName(crop);
         activity.addFirst(new Activity(ids.incrementAndGet(), System.currentTimeMillis(), "Server",
@@ -133,7 +134,7 @@ public final class WebDashboardService {
         refreshNow();
     }
 
-    public void refreshNow() {
+    public synchronized void refreshNow() {
         if (!plugin.isEnabled()) {
             return;
         }
@@ -148,15 +149,15 @@ public final class WebDashboardService {
         broadcast(snapshotJson);
     }
 
-    public boolean isRunning() {
+    public synchronized boolean isRunning() {
         return server != null;
     }
 
-    public String publicUrl() {
+    public synchronized String publicUrl() {
         return publicUrl;
     }
 
-    private String buildSnapshot(ProgressSnapshot progress, long now, long overall) {
+    private synchronized String buildSnapshot(ProgressSnapshot progress, long now, long overall) {
         PluginSettings settings = plugin.configManager().settings();
         long target = plugin.progress().target();
         int cropCount = plugin.progress().crops().size();
@@ -240,7 +241,7 @@ public final class WebDashboardService {
         return item;
     }
 
-    private void sampleHistory(long now, long overall) {
+    private synchronized void sampleHistory(long now, long overall) {
         PluginSettings settings = plugin.configManager().settings();
         if (lastHistorySample == 0 || now - lastHistorySample >= settings.webHistorySampleSeconds() * 1_000L) {
             history.addLast(new HistoryPoint(now, overall));
@@ -267,14 +268,14 @@ public final class WebDashboardService {
         return (last.total() - first.total()) * 3_600_000.0 / elapsed;
     }
 
-    private void handleSnapshot(HttpExchange exchange) throws IOException {
+    private synchronized void handleSnapshot(HttpExchange exchange) throws IOException {
         if (!isReadable(exchange)) {
             return;
         }
         send(exchange, 200, "application/json; charset=utf-8", snapshotJson.getBytes(StandardCharsets.UTF_8), false);
     }
 
-    private void handleHealth(HttpExchange exchange) throws IOException {
+    private synchronized void handleHealth(HttpExchange exchange) throws IOException {
         if (!isReadable(exchange)) {
             return;
         }
@@ -282,7 +283,7 @@ public final class WebDashboardService {
         send(exchange, 200, "application/json; charset=utf-8", payload, false);
     }
 
-    private void handleEvents(HttpExchange exchange) throws IOException {
+    private synchronized void handleEvents(HttpExchange exchange) throws IOException {
         if (!isGet(exchange)) {
             return;
         }
@@ -322,7 +323,7 @@ public final class WebDashboardService {
         }
     }
 
-    private void handleStatic(HttpExchange exchange) throws IOException {
+    private synchronized void handleStatic(HttpExchange exchange) throws IOException {
         if (!isReadable(exchange)) {
             return;
         }
@@ -344,7 +345,7 @@ public final class WebDashboardService {
         send(exchange, 200, contentType(path), payload, path.startsWith("assets/"));
     }
 
-    private boolean isGet(HttpExchange exchange) throws IOException {
+    private synchronized boolean isGet(HttpExchange exchange) throws IOException {
         if (exchange.getRequestMethod().equalsIgnoreCase("GET")) {
             return true;
         }
@@ -353,7 +354,7 @@ public final class WebDashboardService {
         return false;
     }
 
-    private boolean isReadable(HttpExchange exchange) throws IOException {
+    private synchronized boolean isReadable(HttpExchange exchange) throws IOException {
         if (exchange.getRequestMethod().equalsIgnoreCase("GET")
                 || exchange.getRequestMethod().equalsIgnoreCase("HEAD")) {
             return true;
@@ -363,7 +364,7 @@ public final class WebDashboardService {
         return false;
     }
 
-    private void send(HttpExchange exchange, int status, String contentType, byte[] payload, boolean immutable)
+    private synchronized void send(HttpExchange exchange, int status, String contentType, byte[] payload, boolean immutable)
             throws IOException {
         Headers headers = exchange.getResponseHeaders();
         securityHeaders(headers);
@@ -381,7 +382,7 @@ public final class WebDashboardService {
         }
     }
 
-    private void securityHeaders(Headers headers) {
+    private synchronized void securityHeaders(Headers headers) {
         headers.set("Content-Security-Policy", "default-src 'self'; img-src 'self' data:; "
                 + "script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; "
                 + "font-src 'self'; base-uri 'none'; frame-ancestors 'none'");
@@ -396,7 +397,7 @@ public final class WebDashboardService {
         }
     }
 
-    private void broadcast(String payload) {
+    private synchronized void broadcast(String payload) {
         streamClients.values().forEach(client -> client.offer(payload));
     }
 
@@ -407,7 +408,7 @@ public final class WebDashboardService {
         output.flush();
     }
 
-    private void trimActivity() {
+    private synchronized void trimActivity() {
         while (activity.size() > MAX_ACTIVITY) {
             activity.removeLast();
         }

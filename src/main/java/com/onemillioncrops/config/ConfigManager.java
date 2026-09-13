@@ -387,7 +387,7 @@ public final class ConfigManager {
         return result;
     }
 
-    public void apply(LoadedConfiguration loaded) {
+    public synchronized void apply(LoadedConfiguration loaded) {
         if (SoundResolver.resolve(loaded.settings().completionSound()) == null) {
             throw new IllegalArgumentException("Unknown celebration sound: "
                     + loaded.settings().completionSound());
@@ -463,10 +463,10 @@ public final class ConfigManager {
 
     public LoadedConfiguration setCropEnabled(String cropId, boolean enabled) throws IOException {
         String normalised = cropId == null ? "" : cropId.toLowerCase(Locale.ROOT);
-        if (!configuredCrops.containsKey(normalised)) {
+        if (!configuredCrops().containsKey(normalised)) {
             throw new IllegalArgumentException("Unknown configured crop: " + cropId);
         }
-        if (!enabled && enabledCropIds.size() <= 1 && enabledCropIds.contains(normalised)) {
+        if (!enabled && crops().size() <= 1 && isCropEnabled(normalised)) {
             throw new IllegalStateException("At least one crop must remain enabled");
         }
 
@@ -542,35 +542,35 @@ public final class ConfigManager {
         return String.join(" ", result);
     }
 
-    public PluginSettings settings() {
+    public synchronized PluginSettings settings() {
         return settings;
     }
 
-    public Map<String, CropDefinition> crops() {
+    public synchronized Map<String, CropDefinition> crops() {
         return crops;
     }
 
-    public Map<String, CropDefinition> configuredCrops() {
+    public synchronized Map<String, CropDefinition> configuredCrops() {
         return configuredCrops;
     }
 
-    public boolean isCropEnabled(String cropId) {
+    public synchronized boolean isCropEnabled(String cropId) {
         return cropId != null && enabledCropIds.contains(cropId.toLowerCase(Locale.ROOT));
     }
 
-    public CropDefinition cropByItem(Material item) {
+    public synchronized CropDefinition cropByItem(Material item) {
         return cropsByItem.get(item);
     }
 
-    public CropDefinition crop(String id) {
+    public synchronized CropDefinition crop(String id) {
         return id == null ? null : crops.get(id.toLowerCase(Locale.ROOT));
     }
 
-    public CropDefinition cropBySource(BlockState state) {
+    public synchronized CropDefinition cropBySource(BlockState state) {
         return cropBySource(state, settings.requireMatureCrops());
     }
 
-    public CropDefinition cropBySource(BlockState state, boolean requireMature) {
+    public synchronized CropDefinition cropBySource(BlockState state, boolean requireMature) {
         for (CropDefinition crop : crops.values()) {
             if (crop.matchesSource(state, requireMature)) {
                 return crop;
@@ -579,7 +579,7 @@ public final class ConfigManager {
         return null;
     }
 
-    public String message(String key) {
+    public synchronized String message(String key) {
         return messages.getString(key, "<red>Missing message: " + key);
     }
 
@@ -587,13 +587,13 @@ public final class ConfigManager {
      * Reads configurable lore as a YAML list. A scalar string is also accepted
      * so an older messages.yml does not break when the plugin is updated.
      */
-    public List<String> lore(String key, Map<String, String> replacements) {
+    public synchronized List<String> lore(String key, Map<String, String> replacements) {
         return configuredLines(messages.get(key)).stream()
                 .map(line -> replacePlaceholders(line, replacements))
                 .toList();
     }
 
-    public List<String> lore(String key) {
+    public synchronized List<String> lore(String key) {
         return lore(key, Map.of());
     }
 
@@ -615,14 +615,14 @@ public final class ConfigManager {
         return rendered;
     }
 
-    public ActionSettings action(String key) {
+    public synchronized ActionSettings action(String key) {
         return new ActionSettings(
                 messages.getBoolean(key + ".enabled", true),
                 List.copyOf(messages.getStringList(key + ".actions"))
         );
     }
 
-    public HarvestSummarySettings harvestSummary() {
+    public synchronized HarvestSummarySettings harvestSummary() {
         return harvestSummary;
     }
 

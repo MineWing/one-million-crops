@@ -6,9 +6,9 @@
 
     <groupId>com.onemillioncrops</groupId>
     <artifactId>one-million-crops</artifactId>
-    <version>1.0.19</version>
+    <version>1.0.20-folia</version>
     <name>OneMillionCrops</name>
-    <description>A shared one-million-of-every-crop challenge for Paper.</description>
+    <description>A shared one-million-of-every-crop challenge for Paper and Folia.</description>
 
     <properties>
         <maven.compiler.release>21</maven.compiler.release>

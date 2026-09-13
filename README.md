@@ -19,7 +19,22 @@
   <a href="#live-web-dashboard">Web dashboard</a>
 </p>
 
-OneMillionCrops is a server-wide Paper challenge where everyone contributes toward collecting a configurable target—one million by default—of every enabled crop. Progress is persistent, celebrations are shared, and careful provenance tracking keeps automated farms useful without allowing the same stack to be counted repeatedly.
+OneMillionCrops is a server-wide Paper and Folia challenge where everyone contributes toward collecting a configurable target—one million by default—of every enabled crop. Progress is persistent, celebrations are shared, and careful provenance tracking keeps automated farms useful without allowing the same stack to be counted repeatedly.
+
+## Folia version
+
+`OneMillionCrops-1.0.20-folia.jar` supports Folia and Paper 1.21.11 with Java 21 or newer. Install only one OneMillionCrops JAR. The plugin keeps the existing `OneMillionCrops` data folder and SQLite format.
+
+Player menus, action bars and effects run on the player's entity scheduler. Cocoa replanting runs on the target region scheduler. Global timers coordinate refreshes and autosaves; database saves use the async scheduler. Harvest summaries and dashboard state are synchronized across regions.
+
+Folia differences:
+
+- The sidebar is disabled because [Folia does not support Bukkit scoreboards](https://github.com/PaperMC/Folia#current-broken-api). Use `/progress` or `/1mill web`.
+- Plant-wand selections must fit inside the player's currently owned region. A selection outside it is rejected before reading blocks or consuming seeds.
+- Install Folia-compatible versions of optional integrations such as PlaceholderAPI.
+- Restart the server when installing this build. `/1mill reload` reloads configuration only.
+
+Build with `mvn package`. The shaded JAR in `target/` includes SQLite. All 69 tests pass, covering scheduler routing, disconnected recipients and simultaneous harvests. An isolated Folia 1.21.11 build 14 server passed startup, status, summary, configuration reload and dashboard API checks. Multi-player gameplay testing is still needed for menus, planting and cocoa farms across region boundaries.
 
 ## Built for a truly shared challenge
 
