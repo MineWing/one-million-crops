@@ -23,18 +23,18 @@ OneMillionCrops is a server-wide Paper and Folia challenge where everyone contri
 
 ## Folia version
 
-`OneMillionCrops-1.0.22-folia.jar` supports Folia and Paper 1.21.11 with Java 21 or newer. Install only one OneMillionCrops JAR. The plugin keeps the existing `OneMillionCrops` data folder and SQLite format.
+`OneMillionCrops-1.0.23-folia.jar` supports Folia and Paper 1.21.11 with Java 21 or newer. Install only one OneMillionCrops JAR. The plugin keeps the existing `OneMillionCrops` data folder and SQLite format.
 
 Player menus, action bars and effects run on the player's entity scheduler. Cocoa replanting runs on the target region scheduler. Global timers coordinate refreshes and autosaves; database saves use the async scheduler. Harvest summaries and dashboard state are synchronized across regions.
 
 Folia differences:
 
-- The sidebar is disabled because [Folia does not support Bukkit scoreboards](https://github.com/PaperMC/Folia#current-broken-api). Use `/progress` or `/1mill web`.
+- The pink sidebar uses bundled FastBoard packets and runs on each player's entity scheduler. It shows overall progress, the 200,000 target and rotating crop pages on both Folia and Paper. Toggle it with `/1mill scoreboard`.
 - Plant-wand selections must fit inside the player's currently owned region. A selection outside it is rejected before reading blocks or consuming seeds.
 - Install Folia-compatible versions of optional integrations such as PlaceholderAPI.
 - Restart the server when installing this build. `/1mill reload` reloads configuration only.
 
-Build with `mvn package`. The shaded JAR in `target/` includes SQLite. All 86 tests pass, covering scheduler routing, disconnected recipients and simultaneous harvests. An isolated Folia 1.21.11 build 14 server passed startup, status, summary, configuration reload and dashboard API checks. Multi-player gameplay testing is still needed for menus, planting and cocoa farms across region boundaries.
+Build with `mvn package`. The shaded JAR in `target/` includes SQLite and FastBoard; no separate scoreboard plugin is needed. All 89 tests pass, covering scheduler routing, disconnected recipients and simultaneous harvests. An isolated Folia 1.21.11 build 14 server passed startup, status, summary, configuration reload and dashboard API checks. Multi-player gameplay testing is still needed for menus, planting and cocoa farms across region boundaries.
 
 ## Built for a truly shared challenge
 
@@ -54,7 +54,7 @@ Build with `mvn package`. The shaded JAR in `target/` includes SQLite. All 86 te
 The default rules support manual and automatic farms while preventing common recount loops:
 
 - Picking up a stack adds the exact amount that entered the inventory.
-- Water- and piston-harvested drops retain their provenance through hoppers and storage.
+- Enabled water farms count at harvest. Enabled piston drops retain their provenance through storage when hopper crediting is enabled.
 - Cocoa pods harvested by water or by moving their supporting jungle logs are replanted at age 0, consuming one bean from the drops.
 - Eligible crops in chests, barrels, hoppers, and shulker boxes can be inspected or deposited with the Crop Wand.
 - Crops deposited by a player are not made eligible again simply by withdrawing them.
@@ -62,7 +62,7 @@ The default rules support manual and automatic farms while preventing common rec
 - Rebreaking a player-placed crop source does not count until it has genuinely grown.
 - Totals clamp exactly at the configured target.
 
-Set `counting.allow-automated-farms: false`, or toggle it live with `/1mill automode`, to accept only drops traced to mature crops harvested by players. Participant mode defaults to `EVERYONE`; use `ALLOWLIST` with UUIDs for a closed team.
+Use `/1m automode water`, `/1m automode pistons` or `/1m automode hoppers` to toggle each source independently. Hoppers default to OFF. `/1m automode` shows the current settings; `/1m automode all` toggles all three together. Participant mode defaults to `EVERYONE`; use `ALLOWLIST` with UUIDs for a closed team.
 
 ## Player experience
 
@@ -81,7 +81,7 @@ At configurable intervals, the plugin broadcasts a ranked harvest summary and sh
 | `/1mill wand` | Receive the crop storage wand | `onemillion.wand` |
 | `/1mill plantwand` | Receive the two-point farmland planting wand | `onemillion.plantwand` |
 | `/1mill crops` | Open the crop enable/disable GUI | `onemillion.admin` |
-| `/1mill automode` | Toggle crediting for water/piston/hopper farms | `onemillion.admin` |
+| `/1mill automode [water\|pistons\|hoppers\|all]` | View or toggle independent farm crediting | `onemillion.admin` |
 | `/1mill summary` | Inspect the next harvest summary | `onemillion.admin` |
 | `/1mill summary now` | Broadcast the harvest summary immediately | `onemillion.admin` |
 | `/1mill backup` | Create a timestamped SQLite backup | `onemillion.admin` |
@@ -203,3 +203,13 @@ Utility and travel commands use pink-and-blush MiniMessage text, chimes and part
 The target is **200,000 per crop**. Messages use pink and blush accents with neutral body text; crop colours remain distinct. The menu border and title also use the Season 2 palette.
 
 The first load upgrades older configuration to `challenge.season: 2` and a target of 200,000, and refreshes the message palette. Previous config and messages files are preserved as `config-before-season-2.yml` and `messages-before-season-2.yml`. Subsequent reloads respect your configured target. This update does not reset crop progress or saved travel locations.
+
+## Farm credit controls
+
+The saved settings are `counting.automated-farms.water`, `.pistons`, and `.hoppers`. Existing configurations inherit water/piston settings from the old `allow-automated-farms` value when the new keys are absent. Hopper crediting defaults to false even when the old master setting was true. Explicit source settings take precedence over the legacy value.
+
+Disabled sources still produce ordinary items, but those drops are blocked from challenge credit. Water credit happens at harvest and is independent of hopper transport. Piston drops are tagged when the piston moves, including vertical crops and cocoa beside moving jungle logs. Untraceable ground drops are not credited. When hoppers are off, crops passing through them are marked ineligible for later player pickup or Crop Wand deposits. Already-credited water crops cannot be counted again. Cocoa replanting continues regardless of credit settings.
+
+## Sidebar regression probe
+
+With an isolated offline Folia 1.21.11 server listening on loopback port 25579, run `NODE_PATH=/path/to/minecraft-protocol/node_modules node scripts/scoreboard-probe.cjs`. The probe requires `minecraft-protocol` 1.68.0. It connects a temporary player and fails unless a sidebar display packet and score lines arrive within ten seconds, and the scoreboard can be toggled off and back on. It reproduced zero packets before the fix and received the sidebar and 30 score updates after the fix.

@@ -1,5 +1,5 @@
 name: OneMillionCrops
-version: '1.0.22-folia'
+version: '1.0.23-folia'
 main: com.onemillioncrops.OneMillionCropsPlugin
 api-version: '1.21.11'
 authors: [Alex]

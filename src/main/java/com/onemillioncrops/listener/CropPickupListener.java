@@ -47,6 +47,7 @@ public final class CropPickupListener implements Listener {
     private final NamespacedKey blockedKey;
     private final NamespacedKey hopperPendingKey;
     private final PlacedSourceTracker placedSources;
+    private final java.util.Map<BlockKey, PistonDrop> pistonDrops = new java.util.concurrent.ConcurrentHashMap<>();
 
     public CropPickupListener(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
@@ -54,6 +55,49 @@ public final class CropPickupListener implements Listener {
         this.blockedKey = new NamespacedKey(plugin, "blocked_pickup");
         this.hopperPendingKey = new NamespacedKey(plugin, "hopper_pickup_pending");
         this.placedSources = new PlacedSourceTracker(plugin);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPistonExtend(org.bukkit.event.block.BlockPistonExtendEvent event) {
+        trackPistonDrops(event.getBlocks());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPistonRetract(org.bukkit.event.block.BlockPistonRetractEvent event) {
+        trackPistonDrops(event.getBlocks());
+    }
+
+    private void trackPistonDrops(List<Block> moved) {
+        for (Block block : moved) {
+            trackPistonCrop(block);
+            // Moving jungle logs breaks their attached cocoa pods too.
+            if (CocoaAutoReplantListener.isJungleSupport(block.getType())) {
+                for (BlockFace side : List.of(BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST)) {
+                    Block pod = block.getRelative(side);
+                    if (Bukkit.isOwnedByCurrentRegion(pod.getLocation()) && pod.getType() == Material.COCOA) {
+                        trackPistonCrop(pod);
+                    }
+                }
+            }
+        }
+    }
+
+    private void trackPistonCrop(Block block) {
+        if (!Bukkit.isOwnedByCurrentRegion(block.getLocation())) return;
+        CropDefinition crop = plugin.configManager().cropBySource(block.getState(), false);
+        if (crop == null) return;
+        boolean enabled = plugin.configManager().settings().automatedFarms().pistons();
+        Block current = block;
+        // Sugar cane, bamboo and cactus above a broken segment drop in the same operation.
+        while (current.getY() < current.getWorld().getMaxHeight()
+                && Bukkit.isOwnedByCurrentRegion(current.getLocation()) && crop.sources().contains(current.getType())) {
+            BlockKey key = BlockKey.of(current);
+            boolean blocked = !enabled || plugin.configManager().settings().blockPlayerRedrops() && placedSources.contains(current);
+            PistonDrop drop = new PistonDrop(crop.id(), blocked, System.nanoTime());
+            pistonDrops.put(key, drop);
+            Tasks.globalLater(plugin, () -> pistonDrops.remove(key, drop), 20L);
+            current = current.getRelative(BlockFace.UP);
+        }
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -82,11 +126,15 @@ public final class CropPickupListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onWaterHarvest(BlockBreakBlockEvent event) {
         Block block = event.getBlock();
-        if (block.getType() == Material.COCOA
-                || !CocoaAutoReplantListener.isWater(event.getSource().getType())
-                || !plugin.configManager().settings().allowAutomatedFarms()) {
+        if (!CocoaAutoReplantListener.isWater(event.getSource().getType())) return;
+        if (!plugin.configManager().settings().automatedFarms().water()) {
+            // Mark disabled water drops so picking them up or routing them through hoppers cannot count them.
+            for (ItemStack drop : event.getDrops()) {
+                if (plugin.configManager().cropByItem(drop.getType()) != null) markItemBlocked(drop);
+            }
             return;
         }
+        if (block.getType() == Material.COCOA) return;
         CropDefinition crop = plugin.configManager().cropBySource(block.getState());
         if (crop == null) {
             return;
@@ -186,8 +234,13 @@ public final class CropPickupListener implements Listener {
         boolean blocked = hasItemMarker(stack, blockedKey, PersistentDataType.BYTE);
         clearItemMarkers(stack);
         item.setItemStack(stack);
+        PistonDrop drop = pistonDrop(item);
         if (blocked) {
             markBlocked(item);
+        } else if (drop != null) {
+            CropDefinition crop = plugin.configManager().crop(drop.cropId());
+            if (drop.blocked() || crop == null || crop.item() != stack.getType()) markBlocked(item);
+            else markEligible(item, crop);
         } else if (eligible != null) {
             item.getPersistentDataContainer().set(eligibleCropKey, PersistentDataType.STRING, eligible);
         } else if (plugin.configManager().settings().blockPlayerRedrops()
@@ -294,8 +347,6 @@ public final class CropPickupListener implements Listener {
             if (crop == null || crop.item() != item.getItemStack().getType()) {
                 return;
             }
-        } else if (plugin.configManager().settings().allowAutomatedFarms()) {
-            crop = materialCrop;
         } else {
             return;
         }
@@ -323,7 +374,7 @@ public final class CropPickupListener implements Listener {
                 : plugin.configManager().crop(eligibleId);
         boolean validEligibleCrop = eligibleCrop != null && eligibleCrop.item() == stack.getType();
         HopperPickupPolicy policy = hopperPickupPolicy(isBlocked(item), validEligibleCrop,
-                plugin.configManager().settings().allowAutomatedFarms());
+                plugin.configManager().settings().automatedFarms().hoppers());
         if (policy == HopperPickupPolicy.BLOCK) {
             markItemBlocked(stack);
             item.setItemStack(stack);
@@ -470,9 +521,23 @@ public final class CropPickupListener implements Listener {
         return eligible == null ? "automatic" : "eligible:" + eligible;
     }
 
+    private PistonDrop pistonDrop(Item item) {
+        Block block = item.getLocation().getBlock();
+        PistonDrop drop = pistonDrops.get(BlockKey.of(block));
+        return drop != null ? drop : pistonDrops.get(BlockKey.of(block.getRelative(BlockFace.DOWN)));
+    }
+
+    private record BlockKey(java.util.UUID world, int x, int y, int z) {
+        static BlockKey of(Block block) {
+            return new BlockKey(block.getWorld().getUID(), block.getX(), block.getY(), block.getZ());
+        }
+    }
+
+    private record PistonDrop(String cropId, boolean blocked, long token) { }
+
     static HopperPickupPolicy hopperPickupPolicy(boolean blocked, boolean validEligibleCrop,
-                                                  boolean allowAutomatedFarms) {
-        return !blocked && (validEligibleCrop || allowAutomatedFarms)
+                                                  boolean hoppersEnabled) {
+        return hoppersEnabled && !blocked && validEligibleCrop
                 ? HopperPickupPolicy.DEFER_UNTIL_PLAYER
                 : HopperPickupPolicy.BLOCK;
     }

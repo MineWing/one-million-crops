@@ -298,7 +298,7 @@ admin-help:
   enabled: true
   actions:
     - '[message] <gray>Admin:</gray> <#FF8FBD>/1m crops</#FF8FBD> <dark_gray>—</dark_gray> <white>manage challenge crops</white>'
-    - '[message] <gray>Admin:</gray> <#FF8FBD>/1m automode</#FF8FBD> <dark_gray>—</dark_gray> <white>toggle crediting for water/piston/hopper farms</white>'
+    - '[message] <gray>Admin:</gray> <#FF8FBD>/1m automode [water|pistons|hoppers|all]</#FF8FBD> <dark_gray>—</dark_gray> <white>view or toggle farm crediting</white>'
     - '[message] <gray>Admin:</gray> <#FF8FBD>/1m summary [now]</#FF8FBD> <dark_gray>—</dark_gray> <white>inspect or run the harvest report</white>'
     - '[message] <gray>Admin:</gray> <#FF8FBD>/1m backup</#FF8FBD> <dark_gray>|</dark_gray> <#FF8FBD>reload</#FF8FBD> <dark_gray>|</dark_gray> <red>reset [crop] confirm</red>'
 status:

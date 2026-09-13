@@ -15,10 +15,14 @@ participants:
   allowlist: []
 
 counting:
-  # true: unclaimed crop drops from water, pistons and automatic farms count
-  #       when a participating player eventually collects them, including from storage.
-  # false: only drops traced to a mature crop harvested by a player count.
+  # Legacy fallback for water/pistons only when their source keys below are absent.
+  # Prefer /1m automode water, pistons or hoppers to toggle each source.
   allow-automated-farms: true
+  # Separate credit controls. Disabling a source does not stop its machinery.
+  automated-farms:
+    water: true
+    pistons: true
+    hoppers: false
 
   # Prevents Q/drop-and-repickup loops. Keep this enabled for a fair challenge.
   block-player-redrops: true

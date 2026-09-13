@@ -92,7 +92,7 @@ public final class CocoaAutoReplantListener implements Listener {
      * someone to walk over and collect them from the ground.
      */
     private void creditHarvestedBeans(List<ItemStack> drops) {
-        if (!plugin.configManager().settings().allowAutomatedFarms()) {
+        if (!plugin.configManager().settings().automatedFarms().water()) {
             return;
         }
         CropDefinition crop = plugin.configManager().cropByItem(Material.COCOA_BEANS);

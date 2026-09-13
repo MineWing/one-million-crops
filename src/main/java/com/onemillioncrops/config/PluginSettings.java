@@ -9,6 +9,7 @@ public record PluginSettings(
         ParticipantMode participantMode,
         Set<UUID> participantAllowlist,
         boolean allowAutomatedFarms,
+        AutomatedFarmModes automatedFarms,
         boolean blockPlayerRedrops,
         boolean requireMatureCrops,
         int autosaveSeconds,

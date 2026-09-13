@@ -48,10 +48,6 @@ public final class MainCommand implements CommandExecutor, TabCompleter {
             if (!(sender instanceof Player player)) {
                 plugin.sendActions("player-only", sender, Map.of());
             } else {
-                if (com.onemillioncrops.util.Tasks.isFolia()) {
-                    player.sendMessage(plugin.text().parse("<yellow>The sidebar is unavailable on Folia. Use /progress or /1mill web.</yellow>"));
-                    return true;
-                }
                 boolean enabled = plugin.scoreboards().toggle(player);
                 plugin.sendActions(enabled ? "scoreboard-on" : "scoreboard-off", sender, Map.of());
             }
@@ -103,13 +99,31 @@ public final class MainCommand implements CommandExecutor, TabCompleter {
                 }
             }
             case "reload" -> plugin.reloadPlugin(sender);
-            case "automode" -> plugin.toggleAutoHarvest(sender);
+            case "automode" -> automode(sender, args);
             case "backup" -> plugin.backup(sender);
             case "reset" -> reset(sender, args);
             case "summary" -> summary(sender, args);
             default -> help(sender);
         }
         return true;
+    }
+
+    private void automode(CommandSender sender, String[] args) {
+        var effects = new com.onemillioncrops.service.TravelEffects(plugin);
+        if (args.length == 1) {
+            var modes = plugin.configManager().settings().automatedFarms();
+            effects.message(sender, "<white>Farm crediting</white> <dark_gray>•</dark_gray> "
+                    + "<#FFC2DE>Water:</#FFC2DE> " + (modes.water() ? "ON" : "OFF")
+                    + " <dark_gray>•</dark_gray> <#FFC2DE>Pistons:</#FFC2DE> " + (modes.pistons() ? "ON" : "OFF")
+                    + " <dark_gray>•</dark_gray> <#FFC2DE>Hoppers:</#FFC2DE> " + (modes.hoppers() ? "ON" : "OFF"), true);
+            return;
+        }
+        String source = args[1].toLowerCase(Locale.ROOT);
+        if (args.length != 2 || !List.of("water", "pistons", "hoppers", "all").contains(source)) {
+            effects.message(sender, "<yellow>Usage: /1m automode [water|pistons|hoppers|all]</yellow>", false);
+            return;
+        }
+        plugin.toggleAutoHarvest(sender, source);
     }
 
     private void summary(CommandSender sender, String[] args) {
@@ -196,6 +210,10 @@ public final class MainCommand implements CommandExecutor, TabCompleter {
             }
             String prefix = args[0].toLowerCase(Locale.ROOT);
             return options.stream().filter(option -> option.startsWith(prefix)).toList();
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("automode") && sender.hasPermission("onemillion.admin")) {
+            String prefix = args[1].toLowerCase(Locale.ROOT);
+            return List.of("water", "pistons", "hoppers", "all").stream().filter(value -> value.startsWith(prefix)).toList();
         }
         if (args.length == 2 && args[0].equalsIgnoreCase("reset")) {
             if (!sender.hasPermission("onemillion.admin")) {

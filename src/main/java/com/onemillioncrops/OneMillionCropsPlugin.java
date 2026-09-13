@@ -287,18 +287,20 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         });
     }
 
-    public void toggleAutoHarvest(CommandSender sender) {
+    public void toggleAutoHarvest(CommandSender sender, String source) {
         if (!beginOperation(sender, false)) {
             return;
         }
-        boolean enable = !configManager.settings().allowAutomatedFarms();
+        boolean enable = !configManager.settings().automatedFarms().enabled(source);
         Tasks.async(this, () -> {
             try {
-                ConfigManager.LoadedConfiguration loaded = configManager.setAllowAutomatedFarms(enable);
+                ConfigManager.LoadedConfiguration loaded = configManager.setAllowAutomatedFarms(source, enable);
                 runSyncIfActive(() -> {
                     configManager.apply(loaded);
                     endOperation();
-                    sendActions(enable ? "automode-enabled" : "automode-disabled", sender, Map.of());
+                    new com.onemillioncrops.service.TravelEffects(this).message(sender,
+                            "<#FFC2DE>" + source + "</#FFC2DE> <white>farm crediting is now </white><#FF8FBD>"
+                                    + (enable ? "ON" : "OFF") + "</#FF8FBD><white>.</white>", true);
                 });
             } catch (Exception exception) {
                 getLogger().log(Level.SEVERE, "Could not toggle automated farm crediting", exception);

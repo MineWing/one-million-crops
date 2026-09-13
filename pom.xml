@@ -6,7 +6,7 @@
 
     <groupId>com.onemillioncrops</groupId>
     <artifactId>one-million-crops</artifactId>
-    <version>1.0.22-folia</version>
+    <version>1.0.23-folia</version>
     <name>OneMillionCrops</name>
     <description>A shared one-million-of-every-crop challenge for Paper and Folia.</description>
 
@@ -31,6 +31,11 @@
     </repositories>
 
     <dependencies>
+        <dependency>
+            <groupId>fr.mrmicky</groupId>
+            <artifactId>fastboard</artifactId>
+            <version>2.2.1</version>
+        </dependency>
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>
@@ -120,6 +125,12 @@
                         <phase>package</phase>
                         <goals><goal>shade</goal></goals>
                         <configuration>
+                            <relocations>
+                                <relocation>
+                                    <pattern>fr.mrmicky.fastboard</pattern>
+                                    <shadedPattern>com.onemillioncrops.internal.fastboard</shadedPattern>
+                                </relocation>
+                            </relocations>
                             <createDependencyReducedPom>false</createDependencyReducedPom>
                             <!-- SQLite loads its driver classes dynamically, so minimisation would strip them. -->
                             <minimizeJar>false</minimizeJar>

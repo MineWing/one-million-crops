@@ -116,6 +116,7 @@ public final class ConfigManager {
                 participantMode,
                 Collections.unmodifiableSet(allowlist),
                 config.getBoolean("counting.allow-automated-farms", true),
+                AutomatedFarmModes.read(config),
                 config.getBoolean("counting.block-player-redrops", true),
                 config.getBoolean("counting.require-mature-crops", true),
                 Math.max(1, config.getInt("storage.autosave-seconds", 5)),
@@ -523,10 +524,20 @@ public final class ConfigManager {
         return read();
     }
 
-    public LoadedConfiguration setAllowAutomatedFarms(boolean enabled) throws IOException {
+    public LoadedConfiguration setAllowAutomatedFarms(String source, boolean enabled) throws IOException {
         File configFile = new File(plugin.getDataFolder(), "config.yml");
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(configFile);
-        yaml.set("counting.allow-automated-farms", enabled);
+        if (source.equals("all")) {
+            yaml.set("counting.allow-automated-farms", enabled);
+            for (String kind : List.of("water", "pistons", "hoppers")) {
+                yaml.set("counting.automated-farms." + kind, enabled);
+            }
+        } else {
+            if (!List.of("water", "pistons", "hoppers").contains(source)) {
+                throw new IllegalArgumentException("Unknown farm source: " + source);
+            }
+            yaml.set("counting.automated-farms." + source, enabled);
+        }
 
         Path destination = configFile.toPath();
         Path temporary = Files.createTempFile(destination.getParent(), "config-", ".yml.tmp");
