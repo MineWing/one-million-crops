@@ -1,11 +1,23 @@
 name: OneMillionCrops
-version: '1.0.24-folia'
+version: '1.0.25-folia'
 main: com.onemillioncrops.OneMillionCropsPlugin
 api-version: '1.21.11'
 authors: [Alex]
 description: A shared one-million-of-every-crop challenge.
 softdepend: [PlaceholderAPI]
 commands:
+  day:
+    description: Set your current world to day
+    usage: /day
+    permission: onemillion.time
+  night:
+    description: Set your current world to night
+    usage: /night
+    permission: onemillion.time
+  sun:
+    description: Clear rain and thunder in your current world
+    usage: /sun
+    permission: onemillion.weather
   1mill:
     description: Manage the One Million Crops challenge
     usage: /1mill help
@@ -66,6 +78,15 @@ commands:
     usage: /delwarp <name>
     permission: onemillion.warp.admin
 permissions:
+  onemillion.time:
+    description: Use day and night in your current world
+    default: op
+  onemillion.weather:
+    description: Use sun to clear weather in your current world
+    default: op
+  onemillion.veinminer:
+    description: Mine connected ores with a pickaxe, sneak for a single block
+    default: true
   onemillion.timber:
     description: Fell complete trees with an axe, sneak to break a single block
     default: true

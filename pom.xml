@@ -6,7 +6,7 @@
 
     <groupId>com.onemillioncrops</groupId>
     <artifactId>one-million-crops</artifactId>
-    <version>1.0.24-folia</version>
+    <version>1.0.25-folia</version>
     <name>OneMillionCrops</name>
     <description>A shared one-million-of-every-crop challenge for Paper and Folia.</description>
 

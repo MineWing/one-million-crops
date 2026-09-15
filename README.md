@@ -23,7 +23,7 @@ OneMillionCrops is a server-wide Paper and Folia challenge where everyone contri
 
 ## Folia version
 
-`OneMillionCrops-1.0.24-folia.jar` supports Folia and Paper 1.21.11 with Java 21 or newer. Install only one OneMillionCrops JAR. The plugin keeps the existing `OneMillionCrops` data folder and SQLite format.
+`OneMillionCrops-1.0.25-folia.jar` supports Folia and Paper 1.21.11 with Java 21 or newer. Install only one OneMillionCrops JAR. The plugin keeps the existing `OneMillionCrops` data folder and SQLite format.
 
 Player menus, action bars and effects run on the player's entity scheduler. Cocoa replanting runs on the target region scheduler. Global timers coordinate refreshes and autosaves; database saves use the async scheduler. Harvest summaries and dashboard state are synchronized across regions.
 
@@ -224,3 +224,15 @@ Rivet's tree detection and snapshot capture are included in OneMillionCrops. Bot
 - Capture respects cancelled projectile-hit events and skips NPCs, invulnerable mobs, mobs carrying passengers or riding another entity, and entities without a spawn egg or snapshot. On Folia, the thrower and target must be owned by the current region.
 
 These utilities do not add logs or eggs to the crop challenge catalogue. If Rivet is also installed, disable its corresponding features to avoid overlapping handlers.
+
+## Vein mining and world shortcuts
+
+Vein mining is enabled by default and requires `onemillion.veinminer`, granted to everyone. In survival, break an ore with a suitable pickaxe to mine up to 64 connected blocks of the same ore, including diagonal connections and mixed stone/deepslate variants. Like Rivet, ancient debris and glowstone are supported. Sneak to mine one block. Drops and experience appear normally; each block respects protection events and tool durability. Mining stops when a break is refused or the pickaxe breaks. Oversized veins and scans crossing Folia region boundaries fall back to ordinary breaking. Set `vein-mining.enabled: false` in `config.yml`, then use `/1mill reload`, to disable it. Disable Rivet's vein miner if both plugins are installed.
+
+| Command | Effect in your current world | Permission | Default |
+| --- | --- | --- | --- |
+| `/day` | Set time to 1,000 ticks | `onemillion.time` | Operators |
+| `/night` | Set time to 13,000 ticks | `onemillion.time` | Operators |
+| `/sun` | Clear rain and thunder for 12,000 ticks | `onemillion.weather` | Operators |
+
+These shortcuts are player-only and take no arguments. Time changes are immediate. World changes run on Folia's global scheduler, and feedback follows the player's region. If another plugin owns a shortcut, use `/onemillioncrops:day`, `/onemillioncrops:night`, or `/onemillioncrops:sun`.

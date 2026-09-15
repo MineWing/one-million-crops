@@ -80,3 +80,5 @@ timber:
   enabled: true
 egg-capture:
   enabled: true
+vein-mining:
+  enabled: true

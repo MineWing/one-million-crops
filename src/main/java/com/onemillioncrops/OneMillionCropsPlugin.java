@@ -103,6 +103,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
         getServer().getPluginManager().registerEvents(new com.onemillioncrops.listener.TimberListener(this), this);
         getServer().getPluginManager().registerEvents(new com.onemillioncrops.listener.EggCaptureListener(this), this);
+        getServer().getPluginManager().registerEvents(new com.onemillioncrops.listener.VeinMiningListener(this), this);
         registerCommands();
         registerPlaceholders();
         scoreboards.start();
@@ -122,7 +123,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
 
     private void registerCommands() {
         UtilityCommand utility = new UtilityCommand(this);
-        for (String name : java.util.List.of("gms", "gmc", "gmsp", "tp", "tphere")) {
+        for (String name : java.util.List.of("gms", "gmc", "gmsp", "tp", "tphere", "day", "night", "sun")) {
             Objects.requireNonNull(getCommand(name)).setExecutor(utility);
             Objects.requireNonNull(getCommand(name)).setTabCompleter(utility);
         }

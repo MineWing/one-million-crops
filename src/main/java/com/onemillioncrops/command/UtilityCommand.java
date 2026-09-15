@@ -29,13 +29,49 @@ public final class UtilityCommand implements CommandExecutor, TabCompleter {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         String name = command.getName().toLowerCase(Locale.ROOT);
-        String permission = (name.equals("tp") || name.equals("tphere")) ? "onemillion.teleport" : "onemillion.gamemode";
+        String permission = switch (name) {
+            case "tp", "tphere" -> "onemillion.teleport";
+            case "day", "night" -> "onemillion.time";
+            case "sun" -> "onemillion.weather";
+            default -> "onemillion.gamemode";
+        };
         if (!sender.hasPermission(permission)) {
             send(sender, "<red>You do not have permission to use this command.</red>");
             return true;
         }
         if (!(sender instanceof Player player)) {
             send(sender, "<red>This command must be used by a player.</red>");
+            return true;
+        }
+        if (name.equals("day") || name.equals("night") || name.equals("sun")) {
+            if (args.length != 0) {
+                send(player, "<yellow>Usage: /" + name + "</yellow>");
+                return true;
+            }
+            Tasks.player(plugin, player, () -> {
+                var world = player.getWorld();
+                Tasks.global(plugin, () -> {
+                    if (plugin.getServer().getWorld(world.getUID()) != world) {
+                        send(player, "<red>That world is no longer loaded.</red>");
+                        return;
+                    }
+                    boolean changed;
+                    if (name.equals("sun")) {
+                        world.setStorm(false);
+                        world.setThundering(false);
+                        changed = !world.hasStorm() && !world.isThundering();
+                        if (changed) world.setClearWeatherDuration(12_000);
+                    } else {
+                        long time = name.equals("day") ? 1_000 : 13_000;
+                        world.setTime(time);
+                        changed = world.getTime() == time;
+                    }
+                    send(player, changed
+                            ? "<#FF8FBD>" + (name.equals("sun") ? "Weather" : "Time")
+                                + " set to " + name + ".</#FF8FBD>"
+                            : "<red>The change was cancelled.</red>");
+                });
+            });
             return true;
         }
         GameMode mode = switch (name) {

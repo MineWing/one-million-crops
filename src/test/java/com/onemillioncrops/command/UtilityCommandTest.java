@@ -111,8 +111,66 @@ final class UtilityCommandTest {
         assertTrue(h.target.particles.contains(org.bukkit.Particle.PORTAL));
     }
 
+    @Test
+    void worldShortcutsRunOnGlobalSchedulerAndFeedbackOnPlayerRegion() {
+        Harness h = new Harness();
+        h.run("day");
+        assertEquals(0L, h.time);
+        h.drain();
+        assertEquals(1_000L, h.time);
+        assertTrue(h.caller.messages.getLast().contains("Time set to day"));
+        h.run("night");
+        h.drain();
+        assertEquals(13_000L, h.time);
+        h.run("sun");
+        h.drain();
+        assertFalse(h.storm);
+        assertFalse(h.thunder);
+        assertEquals(12_000, h.clearDuration);
+        assertEquals(List.of("onemillion.time", "onemillion.time", "onemillion.weather"), h.permissions);
+    }
+
+    @Test
+    void environmentCommandsRejectPermissionsArgumentsAndUnloadedWorld() {
+        Harness h = new Harness();
+        h.allowed = false;
+        h.run("day");
+        h.run("sun");
+        h.allowed = true;
+        h.run("night", "world");
+        h.run("sun", "world");
+        h.drain();
+        assertEquals(0, h.time);
+        assertTrue(h.storm);
+        h.worldLoaded = false;
+        h.run("day");
+        h.drain();
+        assertEquals(0, h.time);
+        assertTrue(h.caller.messages.getLast().contains("no longer loaded"));
+    }
+
+    @Test
+    void cancelledEnvironmentChangesDoNotReportSuccess() {
+        Harness h = new Harness();
+        h.cancelEnvironment = true;
+        h.run("night");
+        h.drain();
+        assertTrue(h.caller.messages.getLast().contains("cancelled"));
+        h.run("sun");
+        h.drain();
+        assertTrue(h.caller.messages.getLast().contains("cancelled"));
+        assertEquals(0, h.clearDuration);
+    }
+
     static final class Harness {
         boolean allowed = true;
+        boolean global;
+        boolean cancelEnvironment;
+        long time;
+        boolean storm = true;
+        boolean thunder = true;
+        int clearDuration;
+        final List<String> permissions = new ArrayList<>();
         Player owner;
         final Thread testThread = Thread.currentThread();
         final UUID worldId = UUID.randomUUID();
@@ -120,6 +178,13 @@ final class UtilityCommandTest {
         final org.bukkit.World world = proxy(org.bukkit.World.class, (name, args) -> switch (name) {
             case "getUID" -> worldId;
             case "getName" -> "world";
+            case "setTime" -> { assertTrue(global); if (!cancelEnvironment) time = (long) args[0]; yield null; }
+            case "getTime" -> { assertTrue(global); yield time; }
+            case "setStorm" -> { assertTrue(global); if (!cancelEnvironment) storm = (boolean) args[0]; yield null; }
+            case "setThundering" -> { assertTrue(global); if (!cancelEnvironment) thunder = (boolean) args[0]; yield null; }
+            case "hasStorm" -> { assertTrue(global); yield storm; }
+            case "isThundering" -> { assertTrue(global); yield thunder; }
+            case "setClearWeatherDuration" -> { assertTrue(global); clearDuration = (int) args[0]; yield null; }
             default -> throw new AssertionError(name);
         });
         final Queue<Runnable> queue = new java.util.concurrent.ConcurrentLinkedQueue<>();
@@ -128,6 +193,16 @@ final class UtilityCommandTest {
         final Server server = proxy(Server.class, (name, args) -> switch (name) {
             case "isOwnedByCurrentRegion" -> Thread.currentThread() == testThread && args[0] == owner;
             case "getWorld" -> worldLoaded ? world : null;
+            case "getGlobalRegionScheduler" -> proxy(io.papermc.paper.threadedregions.scheduler.GlobalRegionScheduler.class,
+                    (method, params) -> {
+                        queue.add(() -> {
+                            owner = null;
+                            global = true;
+                            try { ((java.util.function.Consumer<?>) params[1]).accept(null); }
+                            finally { global = false; }
+                        });
+                        return null;
+                    });
             case "getPlayerExact" -> args[0].equals("Target") ? target.player : null;
             case "getOnlinePlayers" -> List.of(caller.player, target.player);
             default -> throw new AssertionError(name);
@@ -164,7 +239,8 @@ final class UtilityCommandTest {
                 player = proxy(Player.class, (name, args) -> switch (name) {
                     case "getUniqueId" -> id;
                     case "getName" -> username;
-                    case "hasPermission" -> allowed;
+                    case "hasPermission" -> { permissions.add((String) args[0]); yield allowed; }
+                    case "getWorld" -> { assertSame(this.player, owner); yield world; }
                     case "isOnline", "canSee" -> true;
                     case "getScheduler" -> proxy(EntityScheduler.class, (method, params) -> {
                         queue.add(() -> {

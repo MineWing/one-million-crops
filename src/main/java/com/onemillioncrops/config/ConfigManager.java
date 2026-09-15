@@ -173,7 +173,8 @@ public final class ConfigManager {
         );
         return new LoadedConfiguration(loadedSettings, cropMaps.enabledCrops(), cropMaps.configuredCrops(),
                 cropMaps.enabledIds(), cropMaps.byItem(), loadedHarvestSummary, loadedMessages, new UtilityFeatures(
-                        config.getBoolean("timber.enabled", true), config.getBoolean("egg-capture.enabled", true)));
+                        config.getBoolean("timber.enabled", true), config.getBoolean("egg-capture.enabled", true),
+                        config.getBoolean("vein-mining.enabled", true)));
     }
 
     static boolean applySeasonTwoDefaults(YamlConfiguration config) {
@@ -676,7 +677,7 @@ public final class ConfigManager {
 
     public synchronized UtilityFeatures utilityFeatures() { return utilityFeatures; }
 
-    public record UtilityFeatures(boolean timber, boolean eggCapture) { }
+    public record UtilityFeatures(boolean timber, boolean eggCapture, boolean veinMining) { }
 
     public record LoadedConfiguration(
             PluginSettings settings,
