@@ -23,7 +23,7 @@ OneMillionCrops is a server-wide Paper and Folia challenge where everyone contri
 
 ## Folia version
 
-`OneMillionCrops-1.0.23-folia.jar` supports Folia and Paper 1.21.11 with Java 21 or newer. Install only one OneMillionCrops JAR. The plugin keeps the existing `OneMillionCrops` data folder and SQLite format.
+`OneMillionCrops-1.0.24-folia.jar` supports Folia and Paper 1.21.11 with Java 21 or newer. Install only one OneMillionCrops JAR. The plugin keeps the existing `OneMillionCrops` data folder and SQLite format.
 
 Player menus, action bars and effects run on the player's entity scheduler. Cocoa replanting runs on the target region scheduler. Global timers coordinate refreshes and autosaves; database saves use the async scheduler. Harvest summaries and dashboard state are synchronized across regions.
 
@@ -213,3 +213,14 @@ Disabled sources still produce ordinary items, but those drops are blocked from 
 ## Sidebar regression probe
 
 With an isolated offline Folia 1.21.11 server listening on loopback port 25579, run `NODE_PATH=/path/to/minecraft-protocol/node_modules node scripts/scoreboard-probe.cjs`. The probe requires `minecraft-protocol` 1.68.0. It connects a temporary player and fails unless a sidebar display packet and score lines arrive within ten seconds, and the scoreboard can be toggled off and back on. It reproduced zero packets before the fix and received the sidebar and 30 score updates after the fix.
+
+## Timber and mob capture
+
+Rivet's tree detection and snapshot capture are included in OneMillionCrops. Both are enabled by default, including on existing installations. Set `timber.enabled` or `egg-capture.enabled` to `false` in `config.yml` and use `/1mill reload` to disable either feature. No configuration regeneration is needed.
+
+- Timber requires `onemillion.timber`, granted to everyone by default. Break the bottom log with an axe in survival to fell a tree. Sneak for ordinary single-block breaking. Trees must have at least four logs and ten natural leaves or Nether canopy blocks. Scans are capped at 96 logs and 512 canopy blocks, or 256 logs and 1,024 canopy blocks for large jungle trees.
+- Every timber block uses a real player break, so protection plugins can cancel breaks, tools wear normally, and drops appear in the world. Felling stops if a break is refused or the axe breaks. The tree is processed immediately, from the canopy down after the initial log, without Rivet's delayed animation. A scan crossing a Folia region boundary falls back to ordinary breaking.
+- Mob capture requires `onemillion.eggcapture`, granted to everyone by default. Throw an egg at a supported mob, then collect the captured spawn egg where it stood. Using the spawn egg restores the creature's snapshot, including its name and entity data. Capture completes immediately with particles and sound.
+- Capture respects cancelled projectile-hit events and skips NPCs, invulnerable mobs, mobs carrying passengers or riding another entity, and entities without a spawn egg or snapshot. On Folia, the thrower and target must be owned by the current region.
+
+These utilities do not add logs or eggs to the crop challenge catalogue. If Rivet is also installed, disable its corresponding features to avoid overlapping handlers.

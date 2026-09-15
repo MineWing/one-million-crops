@@ -33,6 +33,7 @@ public final class ConfigManager {
 
     private final JavaPlugin plugin;
     private PluginSettings settings;
+    private UtilityFeatures utilityFeatures;
     private Map<String, CropDefinition> crops = Map.of();
     private Map<String, CropDefinition> configuredCrops = Map.of();
     private Set<String> enabledCropIds = Set.of();
@@ -171,7 +172,8 @@ public final class ConfigManager {
                 List.copyOf(loadedMessages.getStringList("harvestSummary.actions"))
         );
         return new LoadedConfiguration(loadedSettings, cropMaps.enabledCrops(), cropMaps.configuredCrops(),
-                cropMaps.enabledIds(), cropMaps.byItem(), loadedHarvestSummary, loadedMessages);
+                cropMaps.enabledIds(), cropMaps.byItem(), loadedHarvestSummary, loadedMessages, new UtilityFeatures(
+                        config.getBoolean("timber.enabled", true), config.getBoolean("egg-capture.enabled", true)));
     }
 
     static boolean applySeasonTwoDefaults(YamlConfiguration config) {
@@ -428,6 +430,7 @@ public final class ConfigManager {
                     + loaded.settings().completionSound());
         }
         settings = loaded.settings();
+        utilityFeatures = loaded.utilityFeatures();
         crops = loaded.crops();
         configuredCrops = loaded.configuredCrops();
         enabledCropIds = loaded.enabledCropIds();
@@ -671,6 +674,10 @@ public final class ConfigManager {
         return harvestSummary;
     }
 
+    public synchronized UtilityFeatures utilityFeatures() { return utilityFeatures; }
+
+    public record UtilityFeatures(boolean timber, boolean eggCapture) { }
+
     public record LoadedConfiguration(
             PluginSettings settings,
             Map<String, CropDefinition> crops,
@@ -678,7 +685,8 @@ public final class ConfigManager {
             Set<String> enabledCropIds,
             Map<Material, CropDefinition> cropsByItem,
             HarvestSummarySettings harvestSummary,
-            YamlConfiguration messages
+            YamlConfiguration messages,
+            UtilityFeatures utilityFeatures
     ) {
     }
 

@@ -101,6 +101,8 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         plantWand = new PlantWandListener(this);
         getServer().getPluginManager().registerEvents(plantWand, this);
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
+        getServer().getPluginManager().registerEvents(new com.onemillioncrops.listener.TimberListener(this), this);
+        getServer().getPluginManager().registerEvents(new com.onemillioncrops.listener.EggCaptureListener(this), this);
         registerCommands();
         registerPlaceholders();
         scoreboards.start();

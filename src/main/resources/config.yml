@@ -74,3 +74,9 @@ celebration:
   completion-sound: minecraft:ui.toast.challenge_complete
   completion-volume: 1.0
   completion-pitch: 1.0
+
+# Rivet utilities. Changes apply with /1mill reload.
+timber:
+  enabled: true
+egg-capture:
+  enabled: true

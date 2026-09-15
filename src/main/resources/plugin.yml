@@ -1,5 +1,5 @@
 name: OneMillionCrops
-version: '1.0.23-folia'
+version: '1.0.24-folia'
 main: com.onemillioncrops.OneMillionCropsPlugin
 api-version: '1.21.11'
 authors: [Alex]
@@ -66,6 +66,12 @@ commands:
     usage: /delwarp <name>
     permission: onemillion.warp.admin
 permissions:
+  onemillion.timber:
+    description: Fell complete trees with an axe, sneak to break a single block
+    default: true
+  onemillion.eggcapture:
+    description: Capture mobs in spawn eggs by hitting them with thrown eggs
+    default: true
   onemillion.spawn:
     default: true
   onemillion.home:
