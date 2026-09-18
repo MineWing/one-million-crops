@@ -1,23 +1,11 @@
 name: OneMillionCrops
-version: '1.0.25-folia'
+version: '1.0.19'
 main: com.onemillioncrops.OneMillionCropsPlugin
 api-version: '1.21.11'
 authors: [Alex]
 description: A shared one-million-of-every-crop challenge.
 softdepend: [PlaceholderAPI]
 commands:
-  day:
-    description: Set your current world to day
-    usage: /day
-    permission: onemillion.time
-  night:
-    description: Set your current world to night
-    usage: /night
-    permission: onemillion.time
-  sun:
-    description: Clear rain and thunder in your current world
-    usage: /sun
-    permission: onemillion.weather
   1mill:
     description: Manage the One Million Crops challenge
     usage: /1mill help
@@ -25,90 +13,7 @@ commands:
   progress:
     description: Open the crop progress menu
     usage: /progress [crop]
-  gms:
-    description: Switch to survival mode
-    usage: /gms
-    permission: onemillion.gamemode
-  gmc:
-    description: Switch to creative mode
-    usage: /gmc
-    permission: onemillion.gamemode
-  gmsp:
-    description: Switch to spectator mode
-    usage: /gmsp
-    permission: onemillion.gamemode
-  tp:
-    description: Teleport to a player
-    usage: /tp <player>
-    permission: onemillion.teleport
-  tphere:
-    description: Bring a player to you
-    usage: /tphere <player>
-    permission: onemillion.teleport
-  spawn:
-    description: Travel to spawn
-    usage: /spawn
-    permission: onemillion.spawn
-  setspawn:
-    description: Save the server travel spawn
-    usage: /setspawn
-    permission: onemillion.setspawn
-  home:
-    description: Travel to a personal home
-    usage: /home [name]
-    permission: onemillion.home
-  sethome:
-    description: Save a personal home
-    usage: /sethome [name]
-    permission: onemillion.home
-  delhome:
-    description: Delete a personal home
-    usage: /delhome [name]
-    permission: onemillion.home
-  warp:
-    description: Travel to a shared warp or list warps
-    usage: /warp [name]
-    permission: onemillion.warp
-  setwarp:
-    description: Save a shared warp
-    usage: /setwarp <name>
-    permission: onemillion.warp.admin
-  delwarp:
-    description: Delete a shared warp
-    usage: /delwarp <name>
-    permission: onemillion.warp.admin
 permissions:
-  onemillion.time:
-    description: Use day and night in your current world
-    default: op
-  onemillion.weather:
-    description: Use sun to clear weather in your current world
-    default: op
-  onemillion.veinminer:
-    description: Mine connected ores with a pickaxe, sneak for a single block
-    default: true
-  onemillion.timber:
-    description: Fell complete trees with an axe, sneak to break a single block
-    default: true
-  onemillion.eggcapture:
-    description: Capture mobs in spawn eggs by hitting them with thrown eggs
-    default: true
-  onemillion.spawn:
-    default: true
-  onemillion.home:
-    default: true
-  onemillion.warp:
-    default: true
-  onemillion.setspawn:
-    default: op
-  onemillion.warp.admin:
-    default: op
-  onemillion.gamemode:
-    description: Use the survival, creative and spectator shortcuts
-    default: op
-  onemillion.teleport:
-    description: Teleport to players and bring players here
-    default: op
   onemillion.progress:
     description: View challenge progress
     default: true
@@ -121,5 +26,3 @@ permissions:
   onemillion.admin:
     description: Reset, reload, back up, and manage the challenge
     default: op
-
-folia-supported: true

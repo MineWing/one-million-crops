@@ -1,8 +1,6 @@
 package com.onemillioncrops;
 
-import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.command.MainCommand;
-import com.onemillioncrops.command.UtilityCommand;
 import com.onemillioncrops.command.ProgressCommand;
 import com.onemillioncrops.config.ConfigManager;
 import com.onemillioncrops.data.ProgressDatabase;
@@ -28,7 +26,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.Sound;
 import org.bukkit.plugin.java.JavaPlugin;
-import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -42,11 +40,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 
 public final class OneMillionCropsPlugin extends JavaPlugin {
-    private com.onemillioncrops.command.TravelCommand travelCommand;
     private ConfigManager configManager;
     private Text text;
     private ProgressDatabase database;
-    private volatile ProgressService progress;
+    private ProgressService progress;
     private ScoreboardService scoreboards;
     private GuiService gui;
     private HarvestActionBarService harvestActionBar;
@@ -56,9 +53,8 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
     private WebDashboardService dashboard;
     private CropWandListener cropWand;
     private PlantWandListener plantWand;
-    private ScheduledTask autosaveTask;
-    private volatile ScheduledTask visualRefreshTask;
-    private final AtomicBoolean visualRefreshPending = new AtomicBoolean();
+    private BukkitTask autosaveTask;
+    private BukkitTask visualRefreshTask;
     private Runnable unregisterPlaceholders = () -> { };
     private volatile boolean maintenance;
     private volatile boolean resetDatabaseStarted;
@@ -78,8 +74,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
             database = new ProgressDatabase(this, configManager.settings().databaseFile());
             database.open();
             progress = createProgress(database.load());
-            travelCommand = new com.onemillioncrops.command.TravelCommand(this,
-                    new com.onemillioncrops.data.TravelStore(getDataFolder().toPath().resolve("travel.db")));
         } catch (Exception exception) {
             getLogger().log(Level.SEVERE, "OneMillionCrops could not start", exception);
             getServer().getPluginManager().disablePlugin(this);
@@ -101,9 +95,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         plantWand = new PlantWandListener(this);
         getServer().getPluginManager().registerEvents(plantWand, this);
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
-        getServer().getPluginManager().registerEvents(new com.onemillioncrops.listener.TimberListener(this), this);
-        getServer().getPluginManager().registerEvents(new com.onemillioncrops.listener.EggCaptureListener(this), this);
-        getServer().getPluginManager().registerEvents(new com.onemillioncrops.listener.VeinMiningListener(this), this);
         registerCommands();
         registerPlaceholders();
         scoreboards.start();
@@ -122,15 +113,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
     }
 
     private void registerCommands() {
-        UtilityCommand utility = new UtilityCommand(this);
-        for (String name : java.util.List.of("gms", "gmc", "gmsp", "tp", "tphere", "day", "night", "sun")) {
-            Objects.requireNonNull(getCommand(name)).setExecutor(utility);
-            Objects.requireNonNull(getCommand(name)).setTabCompleter(utility);
-        }
-        for (String name : java.util.List.of("spawn", "setspawn", "home", "sethome", "delhome", "warp", "setwarp", "delwarp")) {
-            Objects.requireNonNull(getCommand(name)).setExecutor(travelCommand);
-            Objects.requireNonNull(getCommand(name)).setTabCompleter(travelCommand);
-        }
         MainCommand main = new MainCommand(this);
         Objects.requireNonNull(getCommand("1mill")).setExecutor(main);
         Objects.requireNonNull(getCommand("1mill")).setTabCompleter(main);
@@ -179,9 +161,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
 
     private ProgressService.IncrementResult addProgress(java.util.UUID player, CropDefinition crop, int amount) {
         synchronized (stateLock) {
-            if (maintenance || shuttingDown) {
-                return ProgressService.IncrementResult.NONE;
-            }
             ProgressService.IncrementResult result = player == null
                     ? progress.addUnattributed(crop.id(), amount)
                     : progress.add(player, crop.id(), amount);
@@ -211,7 +190,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         }
         configManager.ensureResources();
         String databaseFile = configManager.settings().databaseFile();
-        Tasks.async(this, () -> {
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
             try {
                 ConfigManager.LoadedConfiguration loaded = configManager.read();
                 ProgressSnapshot snapshot;
@@ -258,7 +237,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
             return;
         }
         sendActions("crop-toggle-updating", player, Map.of("crop", crop.displayMiniMessage()));
-        Tasks.async(this, () -> {
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
             try {
                 ConfigManager.LoadedConfiguration loaded;
                 ProgressSnapshot snapshot;
@@ -290,20 +269,18 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         });
     }
 
-    public void toggleAutoHarvest(CommandSender sender, String source) {
+    public void toggleAutoHarvest(CommandSender sender) {
         if (!beginOperation(sender, false)) {
             return;
         }
-        boolean enable = !configManager.settings().automatedFarms().enabled(source);
-        Tasks.async(this, () -> {
+        boolean enable = !configManager.settings().allowAutomatedFarms();
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
             try {
-                ConfigManager.LoadedConfiguration loaded = configManager.setAllowAutomatedFarms(source, enable);
+                ConfigManager.LoadedConfiguration loaded = configManager.setAllowAutomatedFarms(enable);
                 runSyncIfActive(() -> {
                     configManager.apply(loaded);
                     endOperation();
-                    new com.onemillioncrops.service.TravelEffects(this).message(sender,
-                            "<#FFC2DE>" + source + "</#FFC2DE> <white>farm crediting is now </white><#FF8FBD>"
-                                    + (enable ? "ON" : "OFF") + "</#FF8FBD><white>.</white>", true);
+                    sendActions(enable ? "automode-enabled" : "automode-disabled", sender, Map.of());
                 });
             } catch (Exception exception) {
                 getLogger().log(Level.SEVERE, "Could not toggle automated farm crediting", exception);
@@ -319,7 +296,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         if (!beginOperation(sender, false)) {
             return;
         }
-        Tasks.async(this, () -> {
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
             try {
                 Path path;
                 synchronized (persistenceLock) {
@@ -352,7 +329,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         if (!beginOperation(sender, true)) {
             return;
         }
-        Tasks.async(this, () -> {
+        Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
             try {
                 synchronized (persistenceLock) {
                     resetDatabaseStarted = true;
@@ -400,14 +377,14 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
             autosaveTask.cancel();
         }
         long period = configManager.settings().autosaveSeconds() * 20L;
-        autosaveTask = Tasks.globalTimer(this, this::requestSave, period, period);
+        autosaveTask = Bukkit.getScheduler().runTaskTimer(this, this::requestSave, period, period);
     }
 
     private void requestSave() {
         if (maintenance || shuttingDown || !persistenceRunning.compareAndSet(false, true)) {
             return;
         }
-        Tasks.async(this, this::drainSaves);
+        Bukkit.getScheduler().runTaskAsynchronously(this, this::drainSaves);
     }
 
     private void drainSaves() {
@@ -489,9 +466,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
             return false;
         }
         if (pauseCounting) {
-            synchronized (stateLock) {
-                maintenance = true;
-            }
+            maintenance = true;
         }
         return true;
     }
@@ -504,17 +479,16 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
 
     private void runSyncIfActive(Runnable action) {
         if (!shuttingDown && isEnabled()) {
-            Tasks.global(this, action);
+            Bukkit.getScheduler().runTask(this, action);
         }
     }
 
     private void requestVisualRefresh() {
-        if (!visualRefreshPending.compareAndSet(false, true)) {
+        if (visualRefreshTask != null) {
             return;
         }
-        visualRefreshTask = Tasks.globalLater(this, () -> {
+        visualRefreshTask = Bukkit.getScheduler().runTaskLater(this, () -> {
             visualRefreshTask = null;
-            visualRefreshPending.set(false);
             gui.refreshOpen();
             dashboard.refreshNow();
         }, 1L);
@@ -523,13 +497,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
     @Override
     public void onDisable() {
         shuttingDown = true;
-        if (travelCommand != null) {
-            try {
-                travelCommand.close();
-            } catch (Exception exception) {
-                getLogger().log(Level.SEVERE, "Could not close travel locations", exception);
-            }
-        }
         unregisterPlaceholders.run();
         unregisterPlaceholders = () -> { };
         if (autosaveTask != null) {

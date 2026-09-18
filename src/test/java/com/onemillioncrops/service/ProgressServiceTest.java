@@ -74,36 +74,6 @@ class ProgressServiceTest {
         assertEquals(0, service.contribution(PLAYER, "wheat"));
     }
 
-    @Test
-    void simultaneousRegionsReachTargetAndCompleteExactlyOnce() throws Exception {
-        ProgressService service = service(10_000);
-        var start = new java.util.concurrent.CountDownLatch(1);
-        var completed = new java.util.concurrent.atomic.AtomicInteger();
-        var credited = new java.util.concurrent.atomic.AtomicLong();
-        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(8)) {
-            var futures = new java.util.ArrayList<java.util.concurrent.Future<?>>();
-            for (int worker = 0; worker < 8; worker++) {
-                UUID player = UUID.randomUUID();
-                futures.add(executor.submit(() -> {
-                    start.await();
-                    for (int pickup = 0; pickup < 2_000; pickup++) {
-                        var result = service.add(player, "wheat", 1);
-                        credited.addAndGet(result.added());
-                        if (result.completed()) completed.incrementAndGet();
-                    }
-                    return null;
-                }));
-            }
-            start.countDown();
-            for (var future : futures) future.get(10, java.util.concurrent.TimeUnit.SECONDS);
-        }
-        assertEquals(10_000, service.amount("wheat"));
-        assertEquals(10_000, credited.get());
-        assertEquals(1, completed.get());
-        assertEquals(10_000, service.snapshot().contributions().values().stream()
-                .mapToLong(amounts -> amounts.getOrDefault("wheat", 0L)).sum());
-    }
-
     private static ProgressService service(long target) {
         Map<String, CropDefinition> crops = new LinkedHashMap<>();
         crops.put("wheat", new CropDefinition("wheat", Material.WHEAT, Set.of(Material.WHEAT), "Wheat"));

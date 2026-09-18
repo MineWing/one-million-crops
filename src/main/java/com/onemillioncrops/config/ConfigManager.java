@@ -29,11 +29,10 @@ import java.util.UUID;
 
 public final class ConfigManager {
     static final String MESSAGE_PALETTE_VERSION_KEY = "message-palette-version";
-    static final int CURRENT_MESSAGE_PALETTE_VERSION = 2;
+    static final int CURRENT_MESSAGE_PALETTE_VERSION = 1;
 
     private final JavaPlugin plugin;
     private PluginSettings settings;
-    private UtilityFeatures utilityFeatures;
     private Map<String, CropDefinition> crops = Map.of();
     private Map<String, CropDefinition> configuredCrops = Map.of();
     private Set<String> enabledCropIds = Set.of();
@@ -58,18 +57,7 @@ public final class ConfigManager {
 
     public LoadedConfiguration read() {
         var config = YamlConfiguration.loadConfiguration(new File(plugin.getDataFolder(), "config.yml"));
-        if (applySeasonTwoDefaults(config)) {
-            try {
-                Path original = plugin.getDataFolder().toPath().resolve("config.yml");
-                Path backup = plugin.getDataFolder().toPath().resolve("config-before-season-2.yml");
-                if (Files.exists(original) && !Files.exists(backup)) Files.copy(original, backup);
-                config.save(original.toFile());
-                plugin.getLogger().info("Season 2 configured: 200,000 crops per target and pink accents.");
-            } catch (IOException exception) {
-                throw new IllegalStateException("Could not save Season 2 configuration", exception);
-            }
-        }
-        long target = Math.max(1L, config.getLong("challenge.target-per-crop", 200_000L));
+        long target = Math.max(1L, config.getLong("challenge.target-per-crop", 1_000_000L));
         PluginSettings.ParticipantMode participantMode;
         try {
             participantMode = PluginSettings.ParticipantMode.valueOf(
@@ -117,7 +105,6 @@ public final class ConfigManager {
                 participantMode,
                 Collections.unmodifiableSet(allowlist),
                 config.getBoolean("counting.allow-automated-farms", true),
-                AutomatedFarmModes.read(config),
                 config.getBoolean("counting.block-player-redrops", true),
                 config.getBoolean("counting.require-mature-crops", true),
                 Math.max(1, config.getInt("storage.autosave-seconds", 5)),
@@ -137,7 +124,7 @@ public final class ConfigManager {
                 Math.clamp(config.getInt("scoreboard.crops-per-page", 7), 1, 8),
                 Math.clamp(config.getInt("scoreboard.title-animation-frames", 40), 4, 200),
                 nonEmpty(config.getStringList("scoreboard.title-frames"),
-                        List.of("<gradient:#FF8FBD:#FFC2DE><bold>CROPS • SEASON 2</bold></gradient>")),
+                        List.of("<gradient:#55ff55:#ffd54a><bold>1,000,000 CROPS</bold></gradient>")),
                 Math.max(1, config.getInt("gui.animation-ticks", 5)),
                 config.getBoolean("gui.pickup-sound", false),
                 nonEmpty(config.getIntegerList("celebration.milestones"), List.of(25, 50, 75, 90)),
@@ -172,18 +159,7 @@ public final class ConfigManager {
                 List.copyOf(loadedMessages.getStringList("harvestSummary.actions"))
         );
         return new LoadedConfiguration(loadedSettings, cropMaps.enabledCrops(), cropMaps.configuredCrops(),
-                cropMaps.enabledIds(), cropMaps.byItem(), loadedHarvestSummary, loadedMessages, new UtilityFeatures(
-                        config.getBoolean("timber.enabled", true), config.getBoolean("egg-capture.enabled", true),
-                        config.getBoolean("vein-mining.enabled", true)));
-    }
-
-    static boolean applySeasonTwoDefaults(YamlConfiguration config) {
-        if (config.getInt("challenge.season", 1) >= 2) return false;
-        config.set("challenge.season", 2);
-        config.set("challenge.target-per-crop", 200_000L);
-        config.set("scoreboard.title-frames", List.of(
-                "<b><gradient:#FF8FBD:#FFC2DE:#FFE1EE>CROPS • SEASON 2</gradient></b>"));
-        return true;
+                cropMaps.enabledIds(), cropMaps.byItem(), loadedHarvestSummary, loadedMessages);
     }
 
     private YamlConfiguration bundledMessages() {
@@ -204,8 +180,6 @@ public final class ConfigManager {
             return;
         }
         try {
-            Path backup = messagesFile.toPath().resolveSibling("messages-before-season-2.yml");
-            if (messagesFile.exists() && !Files.exists(backup)) Files.copy(messagesFile.toPath(), backup);
             messages.save(messagesFile);
             plugin.getLogger().info("Updated messages.yml to the unified Crops message palette.");
         } catch (IOException exception) {
@@ -219,14 +193,6 @@ public final class ConfigManager {
             return false;
         }
 
-        for (var entry : new LinkedHashMap<>(messages.getValues(true)).entrySet()) {
-            if (entry.getValue() instanceof String value) {
-                messages.set(entry.getKey(), seasonTwoAccent(value));
-            } else if (entry.getValue() instanceof List<?> values) {
-                messages.set(entry.getKey(), values.stream().map(value -> value instanceof String text
-                        ? seasonTwoAccent(text) : value).toList());
-            }
-        }
         messages.set("prefix", bundled.getString("prefix", ""));
         for (String key : bundled.getKeys(false)) {
             String actionsPath = key + ".actions";
@@ -236,10 +202,6 @@ public final class ConfigManager {
         }
         messages.set(MESSAGE_PALETTE_VERSION_KEY, CURRENT_MESSAGE_PALETTE_VERSION);
         return true;
-    }
-
-    private static String seasonTwoAccent(String value) {
-        return value.replace("#8CE99A", "#FF8FBD").replace("#FFD166", "#FFC2DE");
     }
 
     private void migrateHarvestSummary(YamlConfiguration loadedMessages, File messagesFile) {
@@ -425,13 +387,12 @@ public final class ConfigManager {
         return result;
     }
 
-    public synchronized void apply(LoadedConfiguration loaded) {
+    public void apply(LoadedConfiguration loaded) {
         if (SoundResolver.resolve(loaded.settings().completionSound()) == null) {
             throw new IllegalArgumentException("Unknown celebration sound: "
                     + loaded.settings().completionSound());
         }
         settings = loaded.settings();
-        utilityFeatures = loaded.utilityFeatures();
         crops = loaded.crops();
         configuredCrops = loaded.configuredCrops();
         enabledCropIds = loaded.enabledCropIds();
@@ -502,10 +463,10 @@ public final class ConfigManager {
 
     public LoadedConfiguration setCropEnabled(String cropId, boolean enabled) throws IOException {
         String normalised = cropId == null ? "" : cropId.toLowerCase(Locale.ROOT);
-        if (!configuredCrops().containsKey(normalised)) {
+        if (!configuredCrops.containsKey(normalised)) {
             throw new IllegalArgumentException("Unknown configured crop: " + cropId);
         }
-        if (!enabled && crops().size() <= 1 && isCropEnabled(normalised)) {
+        if (!enabled && enabledCropIds.size() <= 1 && enabledCropIds.contains(normalised)) {
             throw new IllegalStateException("At least one crop must remain enabled");
         }
 
@@ -528,20 +489,10 @@ public final class ConfigManager {
         return read();
     }
 
-    public LoadedConfiguration setAllowAutomatedFarms(String source, boolean enabled) throws IOException {
+    public LoadedConfiguration setAllowAutomatedFarms(boolean enabled) throws IOException {
         File configFile = new File(plugin.getDataFolder(), "config.yml");
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(configFile);
-        if (source.equals("all")) {
-            yaml.set("counting.allow-automated-farms", enabled);
-            for (String kind : List.of("water", "pistons", "hoppers")) {
-                yaml.set("counting.automated-farms." + kind, enabled);
-            }
-        } else {
-            if (!List.of("water", "pistons", "hoppers").contains(source)) {
-                throw new IllegalArgumentException("Unknown farm source: " + source);
-            }
-            yaml.set("counting.automated-farms." + source, enabled);
-        }
+        yaml.set("counting.allow-automated-farms", enabled);
 
         Path destination = configFile.toPath();
         Path temporary = Files.createTempFile(destination.getParent(), "config-", ".yml.tmp");
@@ -591,35 +542,35 @@ public final class ConfigManager {
         return String.join(" ", result);
     }
 
-    public synchronized PluginSettings settings() {
+    public PluginSettings settings() {
         return settings;
     }
 
-    public synchronized Map<String, CropDefinition> crops() {
+    public Map<String, CropDefinition> crops() {
         return crops;
     }
 
-    public synchronized Map<String, CropDefinition> configuredCrops() {
+    public Map<String, CropDefinition> configuredCrops() {
         return configuredCrops;
     }
 
-    public synchronized boolean isCropEnabled(String cropId) {
+    public boolean isCropEnabled(String cropId) {
         return cropId != null && enabledCropIds.contains(cropId.toLowerCase(Locale.ROOT));
     }
 
-    public synchronized CropDefinition cropByItem(Material item) {
+    public CropDefinition cropByItem(Material item) {
         return cropsByItem.get(item);
     }
 
-    public synchronized CropDefinition crop(String id) {
+    public CropDefinition crop(String id) {
         return id == null ? null : crops.get(id.toLowerCase(Locale.ROOT));
     }
 
-    public synchronized CropDefinition cropBySource(BlockState state) {
+    public CropDefinition cropBySource(BlockState state) {
         return cropBySource(state, settings.requireMatureCrops());
     }
 
-    public synchronized CropDefinition cropBySource(BlockState state, boolean requireMature) {
+    public CropDefinition cropBySource(BlockState state, boolean requireMature) {
         for (CropDefinition crop : crops.values()) {
             if (crop.matchesSource(state, requireMature)) {
                 return crop;
@@ -628,7 +579,7 @@ public final class ConfigManager {
         return null;
     }
 
-    public synchronized String message(String key) {
+    public String message(String key) {
         return messages.getString(key, "<red>Missing message: " + key);
     }
 
@@ -636,13 +587,13 @@ public final class ConfigManager {
      * Reads configurable lore as a YAML list. A scalar string is also accepted
      * so an older messages.yml does not break when the plugin is updated.
      */
-    public synchronized List<String> lore(String key, Map<String, String> replacements) {
+    public List<String> lore(String key, Map<String, String> replacements) {
         return configuredLines(messages.get(key)).stream()
                 .map(line -> replacePlaceholders(line, replacements))
                 .toList();
     }
 
-    public synchronized List<String> lore(String key) {
+    public List<String> lore(String key) {
         return lore(key, Map.of());
     }
 
@@ -664,20 +615,16 @@ public final class ConfigManager {
         return rendered;
     }
 
-    public synchronized ActionSettings action(String key) {
+    public ActionSettings action(String key) {
         return new ActionSettings(
                 messages.getBoolean(key + ".enabled", true),
                 List.copyOf(messages.getStringList(key + ".actions"))
         );
     }
 
-    public synchronized HarvestSummarySettings harvestSummary() {
+    public HarvestSummarySettings harvestSummary() {
         return harvestSummary;
     }
-
-    public synchronized UtilityFeatures utilityFeatures() { return utilityFeatures; }
-
-    public record UtilityFeatures(boolean timber, boolean eggCapture, boolean veinMining) { }
 
     public record LoadedConfiguration(
             PluginSettings settings,
@@ -686,8 +633,7 @@ public final class ConfigManager {
             Set<String> enabledCropIds,
             Map<Material, CropDefinition> cropsByItem,
             HarvestSummarySettings harvestSummary,
-            YamlConfiguration messages,
-            UtilityFeatures utilityFeatures
+            YamlConfiguration messages
     ) {
     }
 

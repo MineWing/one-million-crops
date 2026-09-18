@@ -1,6 +1,5 @@
 package com.onemillioncrops.service;
 
-import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.model.CropDefinition;
 import org.bukkit.Bukkit;
@@ -51,10 +50,10 @@ public final class CelebrationService {
 
     public void playPending(Player player) {
         UUID playerId = player.getUniqueId();
-        Tasks.asyncLater(plugin, () -> {
+        Bukkit.getScheduler().runTaskLaterAsynchronously(plugin, () -> {
             try {
                 var pending = plugin.database().pendingCelebrations(playerId);
-                Tasks.player(plugin, player, () -> {
+                Bukkit.getScheduler().runTask(plugin, () -> {
                     if (!player.isOnline()) {
                         return;
                     }
@@ -77,7 +76,6 @@ public final class CelebrationService {
         plugin.actions().execute(grandFinale ? "finale-celebration" : "crop-celebration",
                 List.of(player), List.of(player), List.of(), Map.of(
                         "crop", crop.displayMiniMessage(),
-                        "target", com.onemillioncrops.util.Text.number(plugin.progress().target()),
                         "sound", settings.completionSound(),
                         "volume", Float.toString(settings.completionVolume()),
                         "pitch", Float.toString(settings.completionPitch()),
@@ -87,7 +85,7 @@ public final class CelebrationService {
     }
 
     private void clearPendingAsync(UUID player, String cropId) {
-        Tasks.async(plugin, () -> {
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 plugin.database().clearPending(player, cropId);
             } catch (SQLException exception) {

@@ -1,12 +1,11 @@
 package com.onemillioncrops.service;
 
-import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.util.Text;
 import net.kyori.adventure.bossbar.BossBar;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -14,8 +13,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.sql.SQLException;
+import java.util.HashSet;
 import java.util.logging.Level;
 
 /** Announces how much each currently online player harvested during the configured time window. */
@@ -24,10 +25,10 @@ public final class HarvestSummaryService {
     private final SummaryActionService actions;
     private final Map<UUID, Long> harvested = new HashMap<>();
     private final Map<UUID, Long> personalBests = new HashMap<>();
-    private final Map<UUID, BossBar> countdownBars = new HashMap<>();
-    private ScheduledTask task;
-    private ScheduledTask countdownTask;
-    private CountdownStyle countdownStyle;
+    private final Set<UUID> countdownViewers = new HashSet<>();
+    private BukkitTask task;
+    private BukkitTask countdownTask;
+    private BossBar countdownBar;
     private String countdownTitle;
     private long intervalMillis;
     private long nextRunAtMillis;
@@ -37,7 +38,7 @@ public final class HarvestSummaryService {
         this.actions = new SummaryActionService(plugin);
     }
 
-    public synchronized void start() {
+    public void start() {
         stopTask();
         try {
             Map<UUID, Long> loadedPersonalBests = plugin.database().harvestPersonalBests();
@@ -53,51 +54,35 @@ public final class HarvestSummaryService {
         }
     }
 
-    public synchronized void record(Player player, long amount) {
+    public void record(Player player, long amount) {
         if (amount <= 0 || !plugin.configManager().harvestSummary().enabled()) {
             return;
         }
         harvested.merge(player.getUniqueId(), amount, HarvestSummaryService::saturatingAdd);
     }
 
-    public synchronized void stop() {
+    public void stop() {
         stopTask();
         harvested.clear();
     }
 
-    public synchronized void resetPersonalBests() {
+    public void resetPersonalBests() {
         personalBests.clear();
     }
 
     public void showCountdown(Player player) {
-        Tasks.player(plugin, player, () -> updatePlayerCountdown(player));
-    }
-
-    private synchronized void updatePlayerCountdown(Player player) {
-        if (countdownStyle == null || intervalMillis <= 0L) return;
-        long remaining = Math.max(0L, nextRunAtMillis - System.currentTimeMillis());
-        var title = plugin.text().parse(Text.replace(countdownTitle,
-                Map.of("time", countdownTime(remaining))));
-        float progress = countdownProgress(remaining, intervalMillis);
-        BossBar bar = countdownBars.get(player.getUniqueId());
-        if (bar == null) {
-            bar = BossBar.bossBar(title, progress, countdownStyle.color(), countdownStyle.overlay());
-            countdownBars.put(player.getUniqueId(), bar);
-            player.showBossBar(bar);
-        } else {
-            bar.name(title);
-            bar.progress(progress);
+        if (countdownBar != null && countdownViewers.add(player.getUniqueId())) {
+            player.showBossBar(countdownBar);
         }
     }
 
-    public synchronized void remove(Player player) {
-        BossBar bar = countdownBars.remove(player.getUniqueId());
-        if (bar != null) {
-            Tasks.player(plugin, player, () -> player.hideBossBar(bar));
+    public void remove(Player player) {
+        if (countdownBar != null && countdownViewers.remove(player.getUniqueId())) {
+            player.hideBossBar(countdownBar);
         }
     }
 
-    public synchronized SummaryStatus status() {
+    public SummaryStatus status() {
         long total = 0L;
         for (long amount : harvested.values()) {
             total = saturatingAdd(total, amount);
@@ -107,7 +92,7 @@ public final class HarvestSummaryService {
         return new SummaryStatus(scheduled, remainingMillis, harvested.size(), total);
     }
 
-    public synchronized boolean announceNow() {
+    public boolean announceNow() {
         if (!plugin.configManager().harvestSummary().enabled()) {
             return false;
         }
@@ -117,7 +102,7 @@ public final class HarvestSummaryService {
         return true;
     }
 
-    private synchronized void announce() {
+    private void announce() {
         int intervalMinutes = plugin.configManager().harvestSummary().intervalMinutes();
         nextRunAtMillis = System.currentTimeMillis() + intervalMillis(intervalMinutes);
         Map<UUID, Long> completedWindow = new HashMap<>(harvested);
@@ -158,7 +143,7 @@ public final class HarvestSummaryService {
                 players.stream().map(PlayerTotal::player).toList(), entries, total, intervalMinutes);
     }
 
-    private synchronized void stopTask() {
+    private void stopTask() {
         if (task != null) {
             task.cancel();
             task = null;
@@ -167,38 +152,51 @@ public final class HarvestSummaryService {
             countdownTask.cancel();
             countdownTask = null;
         }
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            remove(player);
+        if (countdownBar != null) {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                player.hideBossBar(countdownBar);
+            }
+            countdownBar = null;
         }
-        countdownBars.clear();
-        countdownStyle = null;
+        countdownViewers.clear();
         countdownTitle = null;
         intervalMillis = 0L;
         nextRunAtMillis = 0L;
     }
 
-    private synchronized void schedule() {
+    private void schedule() {
         int minutes = plugin.configManager().harvestSummary().intervalMinutes();
         long intervalTicks = intervalTicks(minutes);
         intervalMillis = intervalMillis(minutes);
         nextRunAtMillis = System.currentTimeMillis() + intervalMillis;
-        task = Tasks.globalTimer(plugin, this::announce, intervalTicks, intervalTicks);
+        task = Bukkit.getScheduler().runTaskTimer(plugin, this::announce, intervalTicks, intervalTicks);
         var configuredCountdown = plugin.configManager().action("harvest-summary-countdown");
         CountdownStyle style = countdownStyle(configuredCountdown.actions());
         if (configuredCountdown.enabled() && style == null) {
             plugin.getLogger().warning("harvest-summary-countdown needs a valid [countdown] action");
         } else if (configuredCountdown.enabled()) {
             countdownTitle = style.title();
-            countdownStyle = style;
-            countdownTask = Tasks.globalTimer(plugin, this::updateCountdown, 0L, 20L);
+            countdownBar = BossBar.bossBar(plugin.text().parse(Text.replace(countdownTitle,
+                    Map.of("time", countdownTime(intervalMillis)))), 1.0f, style.color(), style.overlay());
+            countdownTask = Bukkit.getScheduler().runTaskTimer(plugin, this::updateCountdown, 0L, 20L);
         }
     }
 
-    private synchronized void updateCountdown() {
-        if (countdownStyle == null) return;
+    private void updateCountdown() {
+        if (countdownBar == null || intervalMillis <= 0L) {
+            return;
+        }
+        long remaining = Math.max(0L, nextRunAtMillis - System.currentTimeMillis());
+        countdownBar.progress(countdownProgress(remaining, intervalMillis));
+        countdownBar.name(plugin.text().parse(Text.replace(countdownTitle,
+                Map.of("time", countdownTime(remaining)))));
+
+        Set<UUID> online = new HashSet<>();
         for (Player player : Bukkit.getOnlinePlayers()) {
+            online.add(player.getUniqueId());
             showCountdown(player);
         }
+        countdownViewers.retainAll(online);
     }
 
     static long intervalTicks(int minutes) {

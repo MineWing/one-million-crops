@@ -19,22 +19,7 @@
   <a href="#live-web-dashboard">Web dashboard</a>
 </p>
 
-OneMillionCrops is a server-wide Paper and Folia challenge where everyone contributes toward collecting a configurable target—200,000 per crop in Season 2—of every enabled crop. Progress is persistent, celebrations are shared, and careful provenance tracking keeps automated farms useful without allowing the same stack to be counted repeatedly.
-
-## Folia version
-
-`OneMillionCrops-1.0.25-folia.jar` supports Folia and Paper 1.21.11 with Java 21 or newer. Install only one OneMillionCrops JAR. The plugin keeps the existing `OneMillionCrops` data folder and SQLite format.
-
-Player menus, action bars and effects run on the player's entity scheduler. Cocoa replanting runs on the target region scheduler. Global timers coordinate refreshes and autosaves; database saves use the async scheduler. Harvest summaries and dashboard state are synchronized across regions.
-
-Folia differences:
-
-- The pink sidebar uses bundled FastBoard packets and runs on each player's entity scheduler. It shows overall progress, the 200,000 target and rotating crop pages on both Folia and Paper. Toggle it with `/1mill scoreboard`.
-- Plant-wand selections must fit inside the player's currently owned region. A selection outside it is rejected before reading blocks or consuming seeds.
-- Install Folia-compatible versions of optional integrations such as PlaceholderAPI.
-- Restart the server when installing this build. `/1mill reload` reloads configuration only.
-
-Build with `mvn package`. The shaded JAR in `target/` includes SQLite and FastBoard; no separate scoreboard plugin is needed. All 89 tests pass, covering scheduler routing, disconnected recipients and simultaneous harvests. An isolated Folia 1.21.11 build 14 server passed startup, status, summary, configuration reload and dashboard API checks. Multi-player gameplay testing is still needed for menus, planting and cocoa farms across region boundaries.
+OneMillionCrops is a server-wide Paper challenge where everyone contributes toward collecting a configurable target—one million by default—of every enabled crop. Progress is persistent, celebrations are shared, and careful provenance tracking keeps automated farms useful without allowing the same stack to be counted repeatedly.
 
 ## Built for a truly shared challenge
 
@@ -54,7 +39,7 @@ Build with `mvn package`. The shaded JAR in `target/` includes SQLite and FastBo
 The default rules support manual and automatic farms while preventing common recount loops:
 
 - Picking up a stack adds the exact amount that entered the inventory.
-- Enabled water farms count at harvest. Enabled piston drops retain their provenance through storage when hopper crediting is enabled.
+- Water- and piston-harvested drops retain their provenance through hoppers and storage.
 - Cocoa pods harvested by water or by moving their supporting jungle logs are replanted at age 0, consuming one bean from the drops.
 - Eligible crops in chests, barrels, hoppers, and shulker boxes can be inspected or deposited with the Crop Wand.
 - Crops deposited by a player are not made eligible again simply by withdrawing them.
@@ -62,7 +47,7 @@ The default rules support manual and automatic farms while preventing common rec
 - Rebreaking a player-placed crop source does not count until it has genuinely grown.
 - Totals clamp exactly at the configured target.
 
-Use `/1m automode water`, `/1m automode pistons` or `/1m automode hoppers` to toggle each source independently. Hoppers default to OFF. `/1m automode` shows the current settings; `/1m automode all` toggles all three together. Participant mode defaults to `EVERYONE`; use `ALLOWLIST` with UUIDs for a closed team.
+Set `counting.allow-automated-farms: false`, or toggle it live with `/1mill automode`, to accept only drops traced to mature crops harvested by players. Participant mode defaults to `EVERYONE`; use `ALLOWLIST` with UUIDs for a closed team.
 
 ## Player experience
 
@@ -81,7 +66,7 @@ At configurable intervals, the plugin broadcasts a ranked harvest summary and sh
 | `/1mill wand` | Receive the crop storage wand | `onemillion.wand` |
 | `/1mill plantwand` | Receive the two-point farmland planting wand | `onemillion.plantwand` |
 | `/1mill crops` | Open the crop enable/disable GUI | `onemillion.admin` |
-| `/1mill automode [water\|pistons\|hoppers\|all]` | View or toggle independent farm crediting | `onemillion.admin` |
+| `/1mill automode` | Toggle crediting for water/piston/hopper farms | `onemillion.admin` |
 | `/1mill summary` | Inspect the next harvest summary | `onemillion.admin` |
 | `/1mill summary now` | Broadcast the harvest summary immediately | `onemillion.admin` |
 | `/1mill backup` | Create a timestamped SQLite backup | `onemillion.admin` |
@@ -168,71 +153,3 @@ The test suite covers target clamping, milestone transitions, contribution track
 <p align="center">
   Built by <a href="https://github.com/MineWing">MineWing</a> · See also <a href="https://github.com/MineWing/Rivet">Rivet</a> and <a href="https://github.com/MineWing/EveryBlock">EveryBlock</a>
 </p>
-
-## Operator shortcuts
-
-- `/gms`, `/gmc`, `/gmsp` switch your own mode to survival, creative or spectator. Requires `onemillion.gamemode`.
-- `/tp <player>` teleports you to an online player.
-- `/tphere <player>` brings that player to your current location. Requires `onemillion.teleport`.
-
-Both permissions default to operators. Teleports use Folia's asynchronous teleport API and report cancelled or failed moves. Player names support tab completion. These shortcuts are player-only. The plugin's `/tp` accepts a player name; use `/minecraft:tp` for vanilla coordinates and selectors. If another plugin owns `/tp`, use `/onemillioncrops:tp`.
-
-## Spawn, homes and warps
-
-| Command | Purpose | Default access |
-| --- | --- | --- |
-| `/setspawn` | Save your position and facing as the server's `/spawn` destination | Operators |
-| `/spawn` | Travel to the saved spawn | Everyone |
-| `/sethome [name]` | Save or overwrite one of your homes | Everyone |
-| `/home [name]` | Travel to one of your homes | Everyone |
-| `/delhome [name]` | Remove one of your homes | Everyone |
-| `/setwarp <name>` | Save or overwrite a shared warp | Operators |
-| `/warp [name]` | Visit a warp, or list warps without a name | Everyone |
-| `/delwarp <name>` | Remove a shared warp | Operators |
-
-Omitting a home name uses `home`. Names ignore case and accept 1 to 32 letters, numbers, underscores or hyphens. Saved names support tab completion; homes are scoped to each player's UUID. Setting a location again overwrites it.
-
-Permissions are `onemillion.spawn`, `onemillion.setspawn`, `onemillion.home`, `onemillion.warp`, and `onemillion.warp.admin`. These commands require a player. `/setspawn` sets the `/spawn` destination; it does not change beds, death respawns or first-join behavior.
-
-Locations, world UUIDs and facing are saved in `OneMillionCrops/travel.db`. Back up this file along with `progress.db`; `/1mill backup` backs up crop progress only. Database work runs on an ordered background worker, and shutdown drains accepted writes. Teleporting to an unloaded world reports an error.
-
-Utility and travel commands use pink-and-blush MiniMessage text, chimes and particles. Successful teleports add an end-rod ring, portal particles and a teleport sound for the traveler. Failed or cancelled teleports use error feedback without arrival effects.
-
-## Season 2
-
-The target is **200,000 per crop**. Messages use pink and blush accents with neutral body text; crop colours remain distinct. The menu border and title also use the Season 2 palette.
-
-The first load upgrades older configuration to `challenge.season: 2` and a target of 200,000, and refreshes the message palette. Previous config and messages files are preserved as `config-before-season-2.yml` and `messages-before-season-2.yml`. Subsequent reloads respect your configured target. This update does not reset crop progress or saved travel locations.
-
-## Farm credit controls
-
-The saved settings are `counting.automated-farms.water`, `.pistons`, and `.hoppers`. Existing configurations inherit water/piston settings from the old `allow-automated-farms` value when the new keys are absent. Hopper crediting defaults to false even when the old master setting was true. Explicit source settings take precedence over the legacy value.
-
-Disabled sources still produce ordinary items, but those drops are blocked from challenge credit. Water credit happens at harvest and is independent of hopper transport. Piston drops are tagged when the piston moves, including vertical crops and cocoa beside moving jungle logs. Untraceable ground drops are not credited. When hoppers are off, crops passing through them are marked ineligible for later player pickup or Crop Wand deposits. Already-credited water crops cannot be counted again. Cocoa replanting continues regardless of credit settings.
-
-## Sidebar regression probe
-
-With an isolated offline Folia 1.21.11 server listening on loopback port 25579, run `NODE_PATH=/path/to/minecraft-protocol/node_modules node scripts/scoreboard-probe.cjs`. The probe requires `minecraft-protocol` 1.68.0. It connects a temporary player and fails unless a sidebar display packet and score lines arrive within ten seconds, and the scoreboard can be toggled off and back on. It reproduced zero packets before the fix and received the sidebar and 30 score updates after the fix.
-
-## Timber and mob capture
-
-Rivet's tree detection and snapshot capture are included in OneMillionCrops. Both are enabled by default, including on existing installations. Set `timber.enabled` or `egg-capture.enabled` to `false` in `config.yml` and use `/1mill reload` to disable either feature. No configuration regeneration is needed.
-
-- Timber requires `onemillion.timber`, granted to everyone by default. Break the bottom log with an axe in survival to fell a tree. Sneak for ordinary single-block breaking. Trees must have at least four logs and ten natural leaves or Nether canopy blocks. Scans are capped at 96 logs and 512 canopy blocks, or 256 logs and 1,024 canopy blocks for large jungle trees.
-- Every timber block uses a real player break, so protection plugins can cancel breaks, tools wear normally, and drops appear in the world. Felling stops if a break is refused or the axe breaks. The tree is processed immediately, from the canopy down after the initial log, without Rivet's delayed animation. A scan crossing a Folia region boundary falls back to ordinary breaking.
-- Mob capture requires `onemillion.eggcapture`, granted to everyone by default. Throw an egg at a supported mob, then collect the captured spawn egg where it stood. Using the spawn egg restores the creature's snapshot, including its name and entity data. Capture completes immediately with particles and sound.
-- Capture respects cancelled projectile-hit events and skips NPCs, invulnerable mobs, mobs carrying passengers or riding another entity, and entities without a spawn egg or snapshot. On Folia, the thrower and target must be owned by the current region.
-
-These utilities do not add logs or eggs to the crop challenge catalogue. If Rivet is also installed, disable its corresponding features to avoid overlapping handlers.
-
-## Vein mining and world shortcuts
-
-Vein mining is enabled by default and requires `onemillion.veinminer`, granted to everyone. In survival, break an ore with a suitable pickaxe to mine up to 64 connected blocks of the same ore, including diagonal connections and mixed stone/deepslate variants. Like Rivet, ancient debris and glowstone are supported. Sneak to mine one block. Drops and experience appear normally; each block respects protection events and tool durability. Mining stops when a break is refused or the pickaxe breaks. Oversized veins and scans crossing Folia region boundaries fall back to ordinary breaking. Set `vein-mining.enabled: false` in `config.yml`, then use `/1mill reload`, to disable it. Disable Rivet's vein miner if both plugins are installed.
-
-| Command | Effect in your current world | Permission | Default |
-| --- | --- | --- | --- |
-| `/day` | Set time to 1,000 ticks | `onemillion.time` | Operators |
-| `/night` | Set time to 13,000 ticks | `onemillion.time` | Operators |
-| `/sun` | Clear rain and thunder for 12,000 ticks | `onemillion.weather` | Operators |
-
-These shortcuts are player-only and take no arguments. Time changes are immediate. World changes run on Folia's global scheduler, and feedback follows the player's region. If another plugin owns a shortcut, use `/onemillioncrops:day`, `/onemillioncrops:night`, or `/onemillioncrops:sun`.
