@@ -1,6 +1,5 @@
 package com.onemillioncrops.listener;
 
-import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.model.CropDefinition;
 import io.papermc.paper.event.block.BlockBreakBlockEvent;
@@ -20,6 +19,7 @@ import org.bukkit.event.entity.ItemSpawnEvent;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -47,7 +47,7 @@ public final class CocoaAutoReplantListener implements Listener {
     );
 
     private final OneMillionCropsPlugin plugin;
-    private final Map<BlockPosition, ReplantPlan> pending = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<BlockPosition, ReplantPlan> pending = new HashMap<>();
 
     public CocoaAutoReplantListener(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
@@ -83,7 +83,8 @@ public final class CocoaAutoReplantListener implements Listener {
         seed.setAge(0);
         BlockPosition source = BlockPosition.of(pod);
         ReplantPlan plan = new ReplantPlan(source, source, seed);
-        scheduleReplant(plan, WATER_REPLANT_ATTEMPTS, WATER_RETRY_TICKS, 1L);
+        Bukkit.getScheduler().runTask(plugin,
+                () -> replant(plan, WATER_REPLANT_ATTEMPTS, WATER_RETRY_TICKS));
     }
 
     /**
@@ -92,7 +93,7 @@ public final class CocoaAutoReplantListener implements Listener {
      * someone to walk over and collect them from the ground.
      */
     private void creditHarvestedBeans(List<ItemStack> drops) {
-        if (!plugin.configManager().settings().automatedFarms().water()) {
+        if (!plugin.configManager().settings().allowAutomatedFarms()) {
             return;
         }
         CropDefinition crop = plugin.configManager().cropByItem(Material.COCOA_BEANS);
@@ -129,7 +130,7 @@ public final class CocoaAutoReplantListener implements Listener {
         BlockPosition source = BlockPosition.of(pod);
         ReplantPlan plan = new ReplantPlan(source, target, seed);
         pending.put(source, plan);
-        Tasks.globalLater(plugin,
+        Bukkit.getScheduler().runTaskLater(plugin,
                 () -> pending.remove(source, plan), PENDING_DROP_TICKS);
     }
 
@@ -156,15 +157,8 @@ public final class CocoaAutoReplantListener implements Listener {
             stack.setAmount(remaining);
             item.setItemStack(stack);
         }
-        scheduleReplant(plan, PISTON_REPLANT_ATTEMPTS, PISTON_RETRY_TICKS, 1L);
-    }
-
-    private void scheduleReplant(ReplantPlan plan, int attempts, long retryTicks, long delay) {
-        World world = Bukkit.getWorld(plan.target().worldId());
-        if (world == null) return;
-        BlockPosition target = plan.target();
-        Tasks.regionLater(plugin, new org.bukkit.Location(world, target.x(), target.y(), target.z()),
-                () -> replant(plan, attempts, retryTicks), delay);
+        Bukkit.getScheduler().runTask(plugin,
+                () -> replant(plan, PISTON_REPLANT_ATTEMPTS, PISTON_RETRY_TICKS));
     }
 
     private void replant(ReplantPlan plan, int attemptsRemaining, long retryTicks) {
@@ -172,32 +166,17 @@ public final class CocoaAutoReplantListener implements Listener {
         if (world == null) {
             return;
         }
-        if (replantAt(world, plan.target(), plan.seed())) {
+        if (replantAt(world, plan.target(), plan.seed())
+                || replantAt(world, plan.source(), plan.seed())) {
             return;
         }
-        if (plan.source().equals(plan.target())) {
-            retryReplant(plan, attemptsRemaining, retryTicks);
-            return;
-        }
-        BlockPosition source = plan.source();
-        Tasks.regionLater(plugin, new org.bukkit.Location(world, source.x(), source.y(), source.z()), () -> {
-            if (!replantAt(world, source, plan.seed())) {
-                retryReplant(plan, attemptsRemaining, retryTicks);
-            }
-        }, 1L);
-    }
-
-    private void retryReplant(ReplantPlan plan, int attemptsRemaining, long retryTicks) {
         if (attemptsRemaining > 1) {
-            scheduleReplant(plan, attemptsRemaining - 1, retryTicks, retryTicks);
+            Bukkit.getScheduler().runTaskLater(plugin,
+                    () -> replant(plan, attemptsRemaining - 1, retryTicks), retryTicks);
         }
     }
 
     private boolean replantAt(World world, BlockPosition position, Cocoa seed) {
-        if (!Bukkit.isOwnedByCurrentRegion(world, position.x() >> 4, position.z() >> 4)
-                || !Bukkit.isOwnedByCurrentRegion(world,
-                (position.x() + seed.getFacing().getModX()) >> 4,
-                (position.z() + seed.getFacing().getModZ()) >> 4)) return false;
         Block target = world.getBlockAt(position.x(), position.y(), position.z());
         if (!target.isEmpty()) {
             return false;

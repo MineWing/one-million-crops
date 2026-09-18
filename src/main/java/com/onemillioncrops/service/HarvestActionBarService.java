@@ -1,12 +1,12 @@
 package com.onemillioncrops.service;
 
-import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.model.CropDefinition;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
-import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
+import org.bukkit.scheduler.BukkitTask;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,7 +16,7 @@ import java.util.UUID;
 public final class HarvestActionBarService {
     private static final long QUIET_PERIOD_TICKS = 20L;
     private final OneMillionCropsPlugin plugin;
-    private final Map<UUID, PendingHarvest> pending = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<UUID, PendingHarvest> pending = new HashMap<>();
 
     public HarvestActionBarService(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
@@ -32,7 +32,7 @@ public final class HarvestActionBarService {
         if (harvest.task() != null) {
             harvest.task().cancel();
         }
-        harvest.task(Tasks.playerLater(plugin, player, () -> flush(playerId), QUIET_PERIOD_TICKS));
+        harvest.task(Bukkit.getScheduler().runTaskLater(plugin, () -> flush(playerId), QUIET_PERIOD_TICKS));
     }
 
     public void remove(Player player) {
@@ -64,7 +64,7 @@ public final class HarvestActionBarService {
             if (!first) {
                 entries.append(" <dark_gray>•</dark_gray> ");
             }
-            entries.append("<#FF8FBD><bold>HARVEST</bold></#FF8FBD> <white><bold>")
+            entries.append("<#8CE99A><bold>HARVEST</bold></#8CE99A> <white><bold>")
                     .append(entry.amount()).append("</bold></white> ")
                     .append(entry.crop().displayMiniMessage());
             first = false;
@@ -97,17 +97,17 @@ public final class HarvestActionBarService {
 
     private static final class PendingHarvest {
         private final HarvestBatch batch = new HarvestBatch();
-        private ScheduledTask task;
+        private BukkitTask task;
 
         HarvestBatch batch() {
             return batch;
         }
 
-        ScheduledTask task() {
+        BukkitTask task() {
             return task;
         }
 
-        void task(ScheduledTask task) {
+        void task(BukkitTask task) {
             this.task = task;
         }
     }

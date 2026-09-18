@@ -1,140 +1,200 @@
 package com.onemillioncrops.service;
 
 import com.onemillioncrops.OneMillionCropsPlugin;
-import com.onemillioncrops.config.PluginSettings;
 import com.onemillioncrops.model.CropDefinition;
-import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.util.Text;
-import fr.mrmicky.fastboard.adventure.FastBoard;
-import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
+import io.papermc.paper.scoreboard.numbers.NumberFormat;
 import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.scheduler.BukkitTask;
+import org.bukkit.scoreboard.Criteria;
+import org.bukkit.scoreboard.DisplaySlot;
+import org.bukkit.scoreboard.Objective;
+import org.bukkit.scoreboard.Score;
+import org.bukkit.scoreboard.Scoreboard;
+import org.bukkit.scoreboard.Team;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
-/** Packet-only sidebars: no Bukkit scoreboard state is accessed on Paper or Folia. */
 public final class ScoreboardService {
+    private static final int MAX_LINES = 15;
     private final OneMillionCropsPlugin plugin;
-    private final Map<UUID, PlayerBoard> boards = new ConcurrentHashMap<>();
-    private final Set<UUID> hidden = ConcurrentHashMap.newKeySet();
-    private volatile List<Component> titleFrames = List.of(Component.text("Crops • Season 2"));
-    private volatile boolean running;
+    private final Map<UUID, PlayerBoard> boards = new HashMap<>();
+    private final Map<UUID, Scoreboard> previous = new HashMap<>();
+    private final Set<UUID> hidden = new HashSet<>();
+    private List<Component> titleFrames = List.of(Component.text("One Million Crops"));
+    private BukkitTask animationTask;
+    private long animationTick;
+    private int dataRefreshTicks;
 
     public ScoreboardService(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
     }
 
-    public synchronized void start() {
-        stop();
-        var settings = plugin.configManager().settings();
-        titleFrames = plugin.text().compileAnimatedGradientFrames(settings.scoreboardTitleFrames(),
-                settings.scoreboardTitleAnimationFrames());
-        running = true;
-        for (Player player : plugin.getServer().getOnlinePlayers()) showIfEnabled(player);
-        plugin.getLogger().info("Packet sidebar enabled for Paper and Folia.");
+    public void start() {
+        stopTask();
+        animationTick = 0;
+        dataRefreshTicks = 0;
+        titleFrames = plugin.text().compileAnimatedGradientFrames(
+                plugin.configManager().settings().scoreboardTitleFrames(),
+                plugin.configManager().settings().scoreboardTitleAnimationFrames());
+        int period = plugin.configManager().settings().scoreboardAnimationTicks();
+        animationTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> animate(period), 1L, period);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            showIfEnabled(player);
+        }
     }
 
     public void showIfEnabled(Player player) {
-        Tasks.player(plugin, player, () -> showOwned(player));
+        if (!plugin.configManager().settings().scoreboardEnabled() || hidden.contains(player.getUniqueId())) {
+            return;
+        }
+        previous.putIfAbsent(player.getUniqueId(), player.getScoreboard());
+        boards.computeIfAbsent(player.getUniqueId(), ignored -> createBoard());
+        update(player);
+        player.setScoreboard(boards.get(player.getUniqueId()).scoreboard());
     }
 
-    private synchronized void showOwned(Player player) {
-        UUID id = player.getUniqueId();
-        if (!running || hidden.contains(id) || !plugin.configManager().settings().scoreboardEnabled()
-                || boards.containsKey(id)) return;
-        PlayerBoard session = new PlayerBoard(new FastBoard(player));
-        boards.put(id, session);
-        render(session, true);
-        int period = plugin.configManager().settings().scoreboardAnimationTicks();
-        session.task = player.getScheduler().runAtFixedRate(plugin, task -> {
-            synchronized (session) {
-                if (session.deleted) return;
-                session.ticks += period;
-                session.dataTicks += period;
-                int refresh = plugin.configManager().settings().scoreboardRefreshTicks();
-                boolean refreshData = session.dataTicks >= refresh;
-                if (refreshData) session.dataTicks %= refresh;
-                render(session, refreshData);
-            }
-        }, () -> boards.remove(id, session), 1L, period);
-        if (session.task == null) boards.remove(id, session);
-    }
-
-    /** Called by the player's command on their owning entity thread. */
-    public synchronized boolean toggle(Player player) {
-        UUID id = player.getUniqueId();
-        if (boards.containsKey(id)) {
-            hidden.add(id);
-            remove(player);
+    public boolean toggle(Player player) {
+        UUID uuid = player.getUniqueId();
+        if (boards.containsKey(uuid) && !hidden.contains(uuid)) {
+            hidden.add(uuid);
+            Scoreboard old = previous.get(uuid);
+            player.setScoreboard(old != null ? old : Bukkit.getScoreboardManager().getMainScoreboard());
             return false;
         }
-        hidden.remove(id);
-        showOwned(player);
-        return boards.containsKey(id);
+        hidden.remove(uuid);
+        showIfEnabled(player);
+        return true;
     }
 
     public void updateAll() {
-        for (Player player : plugin.getServer().getOnlinePlayers()) {
-            showIfEnabled(player);
-            update(player);
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (!hidden.contains(player.getUniqueId())) {
+                showIfEnabled(player);
+            }
         }
     }
 
     public void update(Player player) {
-        Tasks.player(plugin, player, () -> {
-            PlayerBoard session = boards.get(player.getUniqueId());
-            if (session != null) render(session, true);
-        });
+        PlayerBoard playerBoard = boards.get(player.getUniqueId());
+        if (playerBoard == null || hidden.contains(player.getUniqueId())) {
+            return;
+        }
+        updateTitle(playerBoard);
+        updateLines(playerBoard);
     }
 
-    private void render(PlayerBoard session, boolean refreshData) {
-        synchronized (session) {
-            if (session.deleted) return;
-            PluginSettings settings = plugin.configManager().settings();
-            List<Component> frames = titleFrames;
-            long frame = session.ticks / Math.max(1, settings.scoreboardAnimationTicks());
-            session.board.updateTitle(frames.get((int) (frame % frames.size())));
-            if (refreshData) session.board.updateLines(lines(session.ticks, settings));
+    private void animate(int elapsedTicks) {
+        animationTick += elapsedTicks;
+        dataRefreshTicks += elapsedTicks;
+        int refreshPeriod = plugin.configManager().settings().scoreboardRefreshTicks();
+        boolean refreshData = dataRefreshTicks >= refreshPeriod;
+        if (refreshData) {
+            dataRefreshTicks %= refreshPeriod;
+        }
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (hidden.contains(player.getUniqueId())) {
+                continue;
+            }
+            PlayerBoard board = boards.get(player.getUniqueId());
+            if (board == null) {
+                showIfEnabled(player);
+                continue;
+            }
+            updateTitle(board);
+            if (refreshData) {
+                updateLines(board);
+            }
         }
     }
 
-    private List<Component> lines(long ticks, PluginSettings settings) {
-        ProgressService progress = plugin.progress();
-        var snapshot = progress.snapshot();
-        int perPage = settings.scoreboardCropsPerPage();
-        List<CropDefinition> crops = new ArrayList<>(progress.crops().values());
-        crops.sort(Comparator.comparingLong((CropDefinition crop) -> snapshot.totals().getOrDefault(crop.id(), 0L))
+    private void updateTitle(PlayerBoard board) {
+        int animationPeriod = plugin.configManager().settings().scoreboardAnimationTicks();
+        long step = animationTick / Math.max(1, animationPeriod);
+        Component title = titleFrames.get((int) (step % titleFrames.size()));
+        if (title.equals(board.displayedTitle())) {
+            return;
+        }
+        board.objective().displayName(title);
+        board.displayedTitle(title);
+    }
+
+    private void updateLines(PlayerBoard playerBoard) {
+        int perPage = plugin.configManager().settings().scoreboardCropsPerPage();
+        List<CropDefinition> crops = new ArrayList<>(plugin.progress().crops().values());
+        crops.sort(Comparator.comparingLong((CropDefinition crop) -> plugin.progress().amount(crop.id()))
                 .reversed());
         int pages = Math.max(1, (crops.size() + perPage - 1) / perPage);
-        int page = (int) ((ticks / settings.scoreboardPageTicks()) % pages);
+        int page = (int) ((animationTick / plugin.configManager().settings().scoreboardPageTicks()) % pages);
         int start = page * perPage;
         int end = Math.min(crops.size(), start + perPage);
-        long totalTarget = saturatingMultiply(progress.target(), crops.size());
-        long total = snapshot.totals().values().stream().reduce(0L, ScoreboardService::saturatingAdd);
-        long completed = snapshot.completed().values().stream().filter(Boolean::booleanValue).count();
+        long totalTarget = saturatingMultiply(plugin.progress().target(), crops.size());
+        long total = crops.stream().mapToLong(crop -> plugin.progress().amount(crop.id()))
+                .reduce(0L, ScoreboardService::saturatingAdd);
+
         List<Component> lines = new ArrayList<>();
         lines.add(plugin.text().parse("<gray>Overall Progress</gray>"));
         lines.add(plugin.text().parse(Text.progressBar(total, totalTarget, 14)));
-        lines.add(plugin.text().parse("<white>" + Text.percent(total, totalTarget) + "%</white> <dark_gray>•</dark_gray> <gray>"
-                + completed + "/" + crops.size() + " done</gray>"));
-        lines.add(plugin.text().parse("<gray>Target:</gray> <#FFC2DE>" + Text.number(progress.target()) + " per crop</#FFC2DE>"));
-        lines.add(plugin.text().parse("<#FF8FBD><bold>Crops</bold></#FF8FBD> <dark_gray>(" + (page + 1) + "/" + pages + ")</dark_gray>"));
+        lines.add(plugin.text().parse("<white>" + Text.percent(total, totalTarget) + "%</white> <dark_gray>•</dark_gray> <gray>" +
+                plugin.progress().completedCount() + "/" + crops.size() + " done</gray>"));
+        lines.add(Component.empty());
+        lines.add(plugin.text().parse("<yellow><bold>Crops</bold></yellow> <dark_gray>(" + (page + 1) + "/" + pages + ")</dark_gray>"));
         for (int index = start; index < end; index++) {
             CropDefinition crop = crops.get(index);
-            long amount = snapshot.totals().getOrDefault(crop.id(), 0L);
-            String marker = amount >= progress.target() ? "<#FF8FBD>✔</#FF8FBD>" : "<dark_gray>•</dark_gray>";
-            lines.add(plugin.text().parse(marker + " " + crop.displayMiniMessage() + " <white>" + compact(amount) + "</white>"));
+            long amount = plugin.progress().amount(crop.id());
+            String marker = amount >= plugin.progress().target() ? "<green>✔</green>" : "<dark_gray>•</dark_gray>";
+            lines.add(plugin.text().parse(marker + " " + crop.displayMiniMessage()
+                    + " <white>" + compact(amount) + "</white>"));
         }
         lines.add(Component.empty());
         lines.add(plugin.text().parse("<gray>/progress for details</gray>"));
-        return lines;
+        applyLines(playerBoard, lines);
+    }
+
+    private PlayerBoard createBoard() {
+        Scoreboard scoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
+        Component initialTitle = Component.text("One Million Crops");
+        Objective objective = scoreboard.registerNewObjective("millioncrops", Criteria.DUMMY,
+                initialTitle);
+        objective.setDisplaySlot(DisplaySlot.SIDEBAR);
+        List<Team> lineTeams = new ArrayList<>();
+        List<Component> rendered = new ArrayList<>();
+        for (int index = 0; index < MAX_LINES; index++) {
+            Team team = scoreboard.registerNewTeam(String.format(Locale.ROOT, "omc_%02d", index));
+            String entry = uniqueCode(index);
+            team.addEntry(entry);
+            team.prefix(Component.empty());
+            Score score = objective.getScore(entry);
+            score.setScore(MAX_LINES - index);
+            score.numberFormat(NumberFormat.blank());
+            lineTeams.add(team);
+            rendered.add(Component.empty());
+        }
+        return new PlayerBoard(scoreboard, objective, lineTeams, rendered, initialTitle);
+    }
+
+    private void applyLines(PlayerBoard board, List<Component> lines) {
+        for (int index = 0; index < MAX_LINES; index++) {
+            Component line = index < lines.size() ? lines.get(index) : Component.empty();
+            if (!line.equals(board.rendered().get(index))) {
+                board.lineTeams().get(index).prefix(line);
+                board.rendered().set(index, line);
+            }
+        }
+    }
+
+    private static String uniqueCode(int index) {
+        return "§" + Integer.toHexString(index & 15);
     }
 
     private static String compact(long amount) {
@@ -155,31 +215,68 @@ public final class ScoreboardService {
         return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
     }
 
-    public synchronized void remove(Player player) {
-        PlayerBoard session = boards.remove(player.getUniqueId());
-        if (session != null) session.close();
+    public void remove(Player player) {
+        boards.remove(player.getUniqueId());
+        previous.remove(player.getUniqueId());
     }
 
-    public synchronized void stop() {
-        running = false;
-        boards.values().forEach(PlayerBoard::close);
+    public void stop() {
+        stopTask();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            Scoreboard old = previous.get(player.getUniqueId());
+            if (old != null) {
+                player.setScoreboard(old);
+            }
+        }
         boards.clear();
+        previous.clear();
+    }
+
+    private void stopTask() {
+        if (animationTask != null) {
+            animationTask.cancel();
+            animationTask = null;
+        }
     }
 
     private static final class PlayerBoard {
-        private final FastBoard board;
-        private ScheduledTask task;
-        private long ticks;
-        private int dataTicks;
-        private boolean deleted;
+        private final Scoreboard scoreboard;
+        private final Objective objective;
+        private final List<Team> lineTeams;
+        private final List<Component> rendered;
+        private Component displayedTitle;
 
-        private PlayerBoard(FastBoard board) { this.board = board; }
+        private PlayerBoard(Scoreboard scoreboard, Objective objective,
+                            List<Team> lineTeams, List<Component> rendered, Component displayedTitle) {
+            this.scoreboard = scoreboard;
+            this.objective = objective;
+            this.lineTeams = lineTeams;
+            this.rendered = rendered;
+            this.displayedTitle = displayedTitle;
+        }
 
-        private synchronized void close() {
-            if (deleted) return;
-            deleted = true;
-            if (task != null) task.cancel();
-            board.delete();
+        private Scoreboard scoreboard() {
+            return scoreboard;
+        }
+
+        private Objective objective() {
+            return objective;
+        }
+
+        private List<Team> lineTeams() {
+            return lineTeams;
+        }
+
+        private List<Component> rendered() {
+            return rendered;
+        }
+
+        private Component displayedTitle() {
+            return displayedTitle;
+        }
+
+        private void displayedTitle(Component displayedTitle) {
+            this.displayedTitle = displayedTitle;
         }
     }
 }

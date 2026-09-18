@@ -11,18 +11,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CropPickupListenerTest {
     @Test
     void defersEligibleHopperPickupsUntilAPlayerCollectsThem() {
-        assertEquals(DEFER_UNTIL_PLAYER, CropPickupListener.hopperPickupPolicy(false, true, true));
+        assertEquals(DEFER_UNTIL_PLAYER, CropPickupListener.hopperPickupPolicy(false, true, false));
     }
 
     @Test
-    void hopperToggleOffBlocksEvenEligibleHarvests() {
-        assertEquals(BLOCK, CropPickupListener.hopperPickupPolicy(false, true, false));
+    void defersUnclaimedHopperPickupsWhenAutomaticFarmsAreAllowed() {
+        assertEquals(DEFER_UNTIL_PLAYER, CropPickupListener.hopperPickupPolicy(false, false, true));
     }
 
     @Test
     void blocksIneligibleOrUntraceableHopperPickups() {
         assertEquals(BLOCK, CropPickupListener.hopperPickupPolicy(true, true, true));
-        assertEquals(BLOCK, CropPickupListener.hopperPickupPolicy(false, false, true));
+        assertEquals(BLOCK, CropPickupListener.hopperPickupPolicy(false, false, false));
     }
 
     @Test

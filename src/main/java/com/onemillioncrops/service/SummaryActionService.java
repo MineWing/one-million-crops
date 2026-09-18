@@ -1,6 +1,5 @@
 package com.onemillioncrops.service;
 
-import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.util.SoundResolver;
 import com.onemillioncrops.util.Text;
@@ -29,8 +28,8 @@ import java.util.regex.Pattern;
 public final class SummaryActionService {
     private static final Pattern ACTION = Pattern.compile("^\\s*\\[([a-zA-Z]+)](?:\\s?(.*))?$", Pattern.DOTALL);
     private static final String PERSONAL_BEST_AMOUNT =
-            "<#FFC2DE><bold>%s</bold></#FFC2DE> "
-                    + "<dark_gray>(</dark_gray><#FF8FBD>NEW PB</#FF8FBD><dark_gray>)</dark_gray>";
+            "<#FFD166><bold>%s</bold></#FFD166> "
+                    + "<dark_gray>(</dark_gray><#8CE99A>NEW PB</#8CE99A><dark_gray>)</dark_gray>";
     private static final float DEFAULT_SOUND_VOLUME = 0.7f;
     private static final float DEFAULT_SOUND_PITCH = 1.2f;
 
@@ -73,21 +72,7 @@ public final class SummaryActionService {
             }
             List<String> payloads = expandRows(action.payload(), rows, common);
             for (String payload : payloads) {
-                if (action.tag().equals("broadcast")) {
-                    execute(action.tag(), payload, recipients, players);
-                } else if (action.tag().equals("message")) {
-                    for (Audience recipient : recipients) {
-                        if (recipient instanceof Player player) {
-                            Tasks.player(plugin, player, () -> execute(action.tag(), payload, List.of(player), List.of()));
-                        } else {
-                            execute(action.tag(), payload, List.of(recipient), List.of());
-                        }
-                    }
-                } else {
-                    for (Player player : players) {
-                        Tasks.player(plugin, player, () -> execute(action.tag(), payload, List.of(player), List.of(player)));
-                    }
-                }
+                execute(action.tag(), payload, recipients, players);
             }
         }
     }
@@ -141,8 +126,8 @@ public final class SummaryActionService {
         float progress = arguments.length >= 5 ? rangedFloat(arguments[4], "progress", 0.0f, 1.0f) : 1.0f;
         BossBar bossBar = BossBar.bossBar(plugin.text().parse(text), progress, color, overlay);
         recipients.forEach(player -> player.showBossBar(bossBar));
-        recipients.forEach(player -> Tasks.playerLater(plugin, player,
-                () -> player.hideBossBar(bossBar), seconds * 20L));
+        Bukkit.getScheduler().runTaskLater(plugin,
+                () -> recipients.forEach(player -> player.hideBossBar(bossBar)), seconds * 20L);
     }
 
     private void showTitle(String payload, List<Player> recipients) {
@@ -191,8 +176,9 @@ public final class SummaryActionService {
         int gapTicks = arguments.length >= 5 ? nonNegativeInt(arguments[4], "firework gap ticks") : 10;
         for (int index = 0; index < count; index++) {
             long delay = (long) index * gapTicks;
-            recipients.forEach(player -> Tasks.playerLater(plugin, player,
-                    () -> spawnFirework(player, colors, type, power), delay));
+            Bukkit.getScheduler().runTaskLater(plugin,
+                    () -> recipients.stream().filter(Player::isOnline)
+                            .forEach(player -> spawnFirework(player, colors, type, power)), delay);
         }
     }
 
@@ -226,7 +212,7 @@ public final class SummaryActionService {
         String amount = Text.number(entry.amount());
         String amountDisplay = entry.personalBest()
                 ? PERSONAL_BEST_AMOUNT.formatted(amount)
-                : "<#FF8FBD><bold>" + amount + "</bold></#FF8FBD>";
+                : "<#8CE99A><bold>" + amount + "</bold></#8CE99A>";
         return Map.of(
                 "player", Text.escape(entry.player()),
                 "amount", amount,

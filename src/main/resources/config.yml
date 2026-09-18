@@ -5,8 +5,7 @@
 
 challenge:
   # One shared target is used for every enabled entry in crops.yml.
-  season: 2
-  target-per-crop: 200000
+  target-per-crop: 1000000
 
 participants:
   # EVERYONE: every player contributes. Perfect for a private server.
@@ -15,14 +14,10 @@ participants:
   allowlist: []
 
 counting:
-  # Legacy fallback for water/pistons only when their source keys below are absent.
-  # Prefer /1m automode water, pistons or hoppers to toggle each source.
+  # true: unclaimed crop drops from water, pistons and automatic farms count
+  #       when a participating player eventually collects them, including from storage.
+  # false: only drops traced to a mature crop harvested by a player count.
   allow-automated-farms: true
-  # Separate credit controls. Disabling a source does not stop its machinery.
-  automated-farms:
-    water: true
-    pistons: true
-    hoppers: false
 
   # Prevents Q/drop-and-repickup loops. Keep this enabled for a fair challenge.
   block-player-redrops: true
@@ -60,7 +55,7 @@ scoreboard:
   # Frames in one complete, seamless rotation of all gradient color stops.
   title-animation-frames: 120
   title-frames:
-    - '<b><gradient:#FF8FBD:#FFC2DE:#FFE1EE>CROPS • SEASON 2</gradient></b>'
+    - '<b><gradient:#FF4B4B:#FF8B2D:#FFD031:#DCFF39:#6DFF45:#3BFFC7:#58D0FF:#5489FF>CROPS</gradient></b>'
 
 gui:
   animation-ticks: 5
@@ -74,11 +69,3 @@ celebration:
   completion-sound: minecraft:ui.toast.challenge_complete
   completion-volume: 1.0
   completion-pitch: 1.0
-
-# Rivet utilities. Changes apply with /1mill reload.
-timber:
-  enabled: true
-egg-capture:
-  enabled: true
-vein-mining:
-  enabled: true

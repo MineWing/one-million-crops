@@ -1,6 +1,5 @@
 package com.onemillioncrops.listener;
 
-import com.onemillioncrops.util.Tasks;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.gui.PlantWandGuiHolder;
 import com.onemillioncrops.util.Text;
@@ -34,6 +33,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -65,7 +65,7 @@ public final class PlantWandListener implements Listener {
     private final OneMillionCropsPlugin plugin;
     private final NamespacedKey wandKey;
     private final NamespacedKey cropKey;
-    private final Map<UUID, Selection> selections = new java.util.concurrent.ConcurrentHashMap<>();
+    private final Map<UUID, Selection> selections = new HashMap<>();
 
     public PlantWandListener(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
@@ -296,16 +296,6 @@ public final class PlantWandListener implements Listener {
             ));
             return null;
         }
-        for (int x = Math.min(selection.first().x(), selection.second().x()) >> 4;
-             x <= (Math.max(selection.first().x(), selection.second().x()) >> 4); x++) {
-            for (int z = Math.min(selection.first().z(), selection.second().z()) >> 4;
-                 z <= (Math.max(selection.first().z(), selection.second().z()) >> 4); z++) {
-                if (!Bukkit.isOwnedByCurrentRegion(world, x, z)) {
-                    player.sendMessage(plugin.text().parse("<yellow>This selection extends outside your active region. Move closer or select a smaller area.</yellow>"));
-                    return null;
-                }
-            }
-        }
         return new SelectionCheck(world);
     }
 
@@ -374,12 +364,12 @@ public final class PlantWandListener implements Listener {
             int from = start;
             int to = Math.min(effects.size(), start + 24);
             long delay = start / 24L;
-            Tasks.playerLater(plugin, player, () -> {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
                 for (int index = from; index < to; index++) {
                     Location location = effects.get(index);
-                    player.spawnParticle(Particle.HAPPY_VILLAGER, location,
+                    location.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, location,
                             2, 0.3, 0.2, 0.3, 0.02);
-                    player.spawnParticle(Particle.COMPOSTER, location,
+                    location.getWorld().spawnParticle(Particle.COMPOSTER, location,
                             3, 0.35, 0.15, 0.35, 0.01);
                 }
             }, delay);
