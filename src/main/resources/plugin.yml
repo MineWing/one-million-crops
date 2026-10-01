@@ -21,7 +21,7 @@ permissions:
     description: Obtain and use the crop wand on supported storage containers
     default: true
   onemillion.plantwand:
-    description: Obtain and use the two-point farmland planting wand
+    description: Obtain and use the two-point farmland and nether wart planting wand
     default: true
   onemillion.admin:
     description: Reset, reload, back up, and manage the challenge

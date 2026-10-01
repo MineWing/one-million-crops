@@ -29,7 +29,7 @@ OneMillionCrops is a server-wide Paper challenge where everyone contributes towa
 | **Accurate counting** | Tracks crop provenance through water, pistons, hoppers, storage, partial pickups, and player drops |
 | **Live progress** | Animated `/progress` GUI, rotating scoreboard, action bars, milestones, and completion sequences |
 | **Web dashboard** | Responsive dashboard with live totals, velocity, objectives, contributors, online players, and recent pickups |
-| **Farm tools** | Storage crop wand and a protected two-point farmland planting wand |
+| **Farm tools** | Storage crop wand and a protected two-point farmland and nether wart planting wand |
 | **Safe persistence** | SQLite transactions, autosaves, per-player contributions, and automatic pre-reset backups |
 | **Flexible presentation** | MiniMessage action lists for broadcasts, sounds, particles, titles, boss bars, and fireworks |
 | **PlaceholderAPI** | Built-in expansion with global, per-crop, and per-player values |
@@ -64,7 +64,7 @@ At configurable intervals, the plugin broadcasts a ranked harvest summary and sh
 | `/1mill scoreboard` | Toggle the live sidebar | `onemillion.progress` |
 | `/1mill web` | Show the configured dashboard address | `onemillion.progress` |
 | `/1mill wand` | Receive the crop storage wand | `onemillion.wand` |
-| `/1mill plantwand` | Receive the two-point farmland planting wand | `onemillion.plantwand` |
+| `/1mill plantwand` | Receive the two-point farmland and nether wart planting wand | `onemillion.plantwand` |
 | `/1mill crops` | Open the crop enable/disable GUI | `onemillion.admin` |
 | `/1mill automode` | Toggle crediting for water/piston/hopper farms | `onemillion.admin` |
 | `/1mill summary` | Inspect the next harvest summary | `onemillion.admin` |

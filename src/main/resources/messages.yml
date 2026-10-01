@@ -51,14 +51,14 @@ gui:
       - '<dark_gray>│ Unmarked and blocked items are ignored.</dark_gray>'
   plant-wand:
     wand:
-      - '<gray>Select farmland and plant it from your inventory.</gray>'
+      - '<gray>Select farmland or soul sand and plant it from your inventory.</gray>'
       - ''
       - '<dark_gray>│</dark_gray> <#8CE99A>Left-click</#8CE99A> <gray>to select the first corner.</gray>'
       - '<dark_gray>│</dark_gray> <#8CE99A>Right-click</#8CE99A> <gray>to select the second corner.</gray>'
       - '<dark_gray>│ The crop menu opens after corner two.</dark_gray>'
     crop-option:
       - ''
-      - '<dark_gray>│</dark_gray> <gray>Empty farmland:</gray> <white>%farmland%</white>'
+      - '<dark_gray>│</dark_gray> <gray>Suitable planting spaces:</gray> <white>%farmland%</white>'
       - '<dark_gray>│</dark_gray> <gray>Available:</gray> %available%'
       - ''
       - '<dark_gray>│</dark_gray> %action%'
@@ -185,7 +185,7 @@ help:
     - '[message] <#8CE99A>/1m scoreboard</#8CE99A> <dark_gray>—</dark_gray> <white>toggle the live sidebar</white>'
     - '[message] <#8CE99A>/1m web</#8CE99A> <dark_gray>—</dark_gray> <white>open the live dashboard</white>'
     - '[message] <#8CE99A>/1m wand</#8CE99A> <dark_gray>—</dark_gray> <white>receive a crop storage wand</white>'
-    - '[message] <#8CE99A>/1m plantwand</#8CE99A> <dark_gray>—</dark_gray> <white>select farmland and plant it from a crop menu</white>'
+    - '[message] <#8CE99A>/1m plantwand</#8CE99A> <dark_gray>—</dark_gray> <white>select farmland or soul sand and plant it from a crop menu</white>'
 crop-wand-received:
   enabled: true
   actions:
@@ -276,7 +276,7 @@ plant-wand-too-large:
 plant-wand-no-farmland:
   enabled: true
   actions:
-    - '[message] %prefix% <white>No empty farmland was found inside that selection.</white>'
+    - '[message] %prefix% <white>No suitable farmland or soul sand with air above was found inside that selection.</white>'
     - '[sound] BLOCK_DISPENSER_FAIL 0.6 1.1'
 plant-wand-no-crop:
   enabled: true
@@ -291,7 +291,7 @@ plant-wand-plant-blocked:
 plant-wand-planted:
   enabled: true
   actions:
-    - '[message] %prefix% <white>Planted <#8CE99A><bold>%amount%</bold></#8CE99A> of <gray>%farmland%</gray> empty farmland with </white>%crop%<white>.</white>'
+    - '[message] %prefix% <white>Planted <#8CE99A><bold>%amount%</bold></#8CE99A> of <gray>%farmland%</gray> planting spaces with </white>%crop%<white>.</white>'
     - '[sound] ITEM_CROP_PLANT 0.85 1.15'
     - '[sound] BLOCK_AMETHYST_BLOCK_CHIME 0.55 1.65'
 admin-help:

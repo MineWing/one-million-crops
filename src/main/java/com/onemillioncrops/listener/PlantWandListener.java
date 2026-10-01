@@ -42,7 +42,7 @@ public final class PlantWandListener implements Listener {
     static final long MAX_SELECTION_VOLUME = 32_768L;
     static final int MAX_PLANTS_PER_USE = 4_096;
     private static final int MAX_EFFECT_BLOCKS = 240;
-    private static final int[] CROP_SLOTS = {10, 11, 12, 13, 14, 15, 16, 22};
+    private static final int[] CROP_SLOTS = {10, 11, 12, 13, 14, 15, 16, 21, 23};
     private static final List<PlantableCrop> CROPS = List.of(
             new PlantableCrop("wheat", Material.WHEAT_SEEDS, Material.WHEAT,
                     "<gradient:#F9D423:#FFEF94><bold>Wheat</bold></gradient>"),
@@ -59,7 +59,9 @@ public final class PlantWandListener implements Listener {
             new PlantableCrop("torchflower", Material.TORCHFLOWER_SEEDS, Material.TORCHFLOWER_CROP,
                     "<gradient:#F59E0B:#FB7185><bold>Torchflowers</bold></gradient>"),
             new PlantableCrop("pitcher", Material.PITCHER_POD, Material.PITCHER_CROP,
-                    "<gradient:#74C0FC:#C084FC><bold>Pitcher Plants</bold></gradient>")
+                    "<gradient:#74C0FC:#C084FC><bold>Pitcher Plants</bold></gradient>"),
+            new PlantableCrop("nether_wart", Material.NETHER_WART, Material.NETHER_WART,
+                    "<#C94C4C><bold>Nether Wart</bold></#C94C4C>", Material.SOUL_SAND)
     );
 
     private final OneMillionCropsPlugin plugin;
@@ -173,7 +175,7 @@ public final class PlantWandListener implements Listener {
         if (check == null) {
             return;
         }
-        List<Block> farmland = findFarmland(check.world(), selection);
+        List<Block> farmland = findSoil(check.world(), selection, Material.FARMLAND, Material.SOUL_SAND);
         if (farmland.isEmpty()) {
             plugin.sendActions("plant-wand-no-farmland", player, Map.of());
             return;
@@ -197,7 +199,7 @@ public final class PlantWandListener implements Listener {
                     ? "<#8CE99A>Left-click</#8CE99A> <gray>to plant this crop.</gray>"
                     : "<red>You do not have this crop.</red>";
             ItemStack option = item(crop.seed(), crop.display(), lore("gui.plant-wand.crop-option", Map.of(
-                    "farmland", Text.number(farmland.size()),
+                    "farmland", Text.number(farmland.stream().filter(soil -> soil.getType() == crop.soil()).count()),
                     "available", availableText,
                     "action", action
             )));
@@ -207,7 +209,7 @@ public final class PlantWandListener implements Listener {
             inventory.setItem(CROP_SLOTS[index], option);
         }
         inventory.setItem(4, item(Material.GOLDEN_HOE, "<#8CE99A><bold>" + Text.number(farmland.size())
-                + " Empty Farmland</bold></#8CE99A>", lore("gui.plant-wand.menu-summary", Map.of(
+                + " Planting Spaces</bold></#8CE99A>", lore("gui.plant-wand.menu-summary", Map.of(
                 "maximum", Text.number(MAX_PLANTS_PER_USE)
         ))));
         player.openInventory(inventory);
@@ -227,7 +229,7 @@ public final class PlantWandListener implements Listener {
             return;
         }
 
-        List<Block> farmland = findFarmland(check.world(), selection);
+        List<Block> farmland = findSoil(check.world(), selection, crop.soil());
         if (farmland.isEmpty()) {
             plugin.sendActions("plant-wand-no-farmland", player, Map.of());
             return;
@@ -299,7 +301,8 @@ public final class PlantWandListener implements Listener {
         return new SelectionCheck(world);
     }
 
-    private List<Block> findFarmland(World world, Selection selection) {
+    static List<Block> findSoil(World world, Selection selection, Material... soilTypes) {
+        List<Material> allowedSoils = List.of(soilTypes);
         int minX = Math.min(selection.first().x(), selection.second().x());
         int maxX = Math.max(selection.first().x(), selection.second().x());
         int minY = Math.min(selection.first().y(), selection.second().y());
@@ -311,7 +314,7 @@ public final class PlantWandListener implements Listener {
             for (int x = minX; x <= maxX; x++) {
                 for (int z = minZ; z <= maxZ; z++) {
                     Block soil = world.getBlockAt(x, y, z);
-                    if (soil.getType() == Material.FARMLAND && soil.getRelative(BlockFace.UP).isEmpty()) {
+                    if (allowedSoils.contains(soil.getType()) && soil.getRelative(BlockFace.UP).isEmpty()) {
                         farmland.add(soil);
                     }
                 }
@@ -429,7 +432,10 @@ public final class PlantWandListener implements Listener {
         return String.join(" ", words);
     }
 
-    record PlantableCrop(String id, Material seed, Material block, String display) {
+    record PlantableCrop(String id, Material seed, Material block, String display, Material soil) {
+        PlantableCrop(String id, Material seed, Material block, String display) {
+            this(id, seed, block, display, Material.FARMLAND);
+        }
     }
 
     record BlockPosition(UUID worldId, int x, int y, int z) {
@@ -446,7 +452,7 @@ public final class PlantWandListener implements Listener {
         }
     }
 
-    private record Selection(BlockPosition first, BlockPosition second) {
+    record Selection(BlockPosition first, BlockPosition second) {
     }
 
     private record SelectionCheck(World world) {

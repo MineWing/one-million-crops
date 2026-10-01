@@ -1,6 +1,11 @@
 package com.onemillioncrops.listener;
 
 import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.block.Block;
+
+import java.lang.reflect.Proxy;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import java.util.UUID;
@@ -22,6 +27,7 @@ final class PlantWandListenerTest {
 
     @Test
     void mapsEveryFarmlandCropToItsPlantingItemAndBlock() {
+        assertEquals(Material.FARMLAND, PlantWandListener.crop("wheat").soil());
         assertCrop("wheat", Material.WHEAT_SEEDS, Material.WHEAT);
         assertCrop("carrot", Material.CARROT, Material.CARROTS);
         assertCrop("potato", Material.POTATO, Material.POTATOES);
@@ -31,6 +37,41 @@ final class PlantWandListenerTest {
         assertCrop("torchflower", Material.TORCHFLOWER_SEEDS, Material.TORCHFLOWER_CROP);
         assertCrop("pitcher", Material.PITCHER_POD, Material.PITCHER_CROP);
         assertNull(PlantWandListener.crop("kelp"));
+    }
+
+    @Test
+    void plantsNetherWartOnlyOnEmptySoulSand() {
+        var wart = PlantWandListener.crop("nether_wart");
+        assertCrop("nether_wart", Material.NETHER_WART, Material.NETHER_WART);
+        assertEquals(Material.SOUL_SAND, wart.soil());
+        Block farmland = soil(Material.FARMLAND, true);
+        Block soulSand = soil(Material.SOUL_SAND, true);
+        Block occupiedSoulSand = soil(Material.SOUL_SAND, false);
+        Block soulSoil = soil(Material.SOUL_SOIL, true);
+        List<Block> blocks = List.of(farmland, soulSand, occupiedSoulSand, soulSoil);
+        World world = (World) Proxy.newProxyInstance(World.class.getClassLoader(), new Class<?>[]{World.class},
+                (proxy, method, args) -> blocks.get((int) args[0]));
+        var selection = new PlantWandListener.Selection(
+                new PlantWandListener.BlockPosition(WORLD, 0, 64, 0),
+                new PlantWandListener.BlockPosition(WORLD, 3, 64, 0));
+
+        assertEquals(List.of(soulSand), PlantWandListener.findSoil(world, selection, wart.soil()));
+        assertEquals(List.of(farmland), PlantWandListener.findSoil(world, selection,
+                PlantWandListener.crop("wheat").soil()));
+        assertEquals(List.of(farmland, soulSand), PlantWandListener.findSoil(world, selection,
+                Material.FARMLAND, Material.SOUL_SAND));
+    }
+
+    private static Block soil(Material material, boolean airAbove) {
+        Block above = (Block) Proxy.newProxyInstance(Block.class.getClassLoader(), new Class<?>[]{Block.class},
+                (proxy, method, args) -> airAbove);
+        return (Block) Proxy.newProxyInstance(Block.class.getClassLoader(), new Class<?>[]{Block.class},
+                (proxy, method, args) -> switch (method.getName()) {
+                    case "getType" -> material;
+                    case "getRelative" -> above;
+                    case "equals" -> proxy == args[0];
+                    default -> throw new UnsupportedOperationException(method.getName());
+                });
     }
 
     @Test
