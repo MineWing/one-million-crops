@@ -47,7 +47,7 @@ The default rules support manual and automatic farms while preventing common rec
 - Rebreaking a player-placed crop source does not count until it has genuinely grown.
 - Totals clamp exactly at the configured target.
 
-Set `counting.allow-automated-farms: false`, or toggle it live with `/1mill automode`, to accept only drops traced to mature crops harvested by players. Participant mode defaults to `EVERYONE`; use `ALLOWLIST` with UUIDs for a closed team.
+Set `counting.allow-automated-farms: false`, or toggle it live with `/1mill automode`, to leave water-harvested drops for players to collect instead of crediting them automatically. Hand pickups and collection from storage still count in either mode. Participant mode defaults to `EVERYONE`; use `ALLOWLIST` with UUIDs for a closed team.
 
 ## Player experience
 
@@ -66,7 +66,7 @@ At configurable intervals, the plugin broadcasts a ranked harvest summary and sh
 | `/1mill wand` | Receive the crop storage wand | `onemillion.wand` |
 | `/1mill plantwand` | Receive the two-point farmland and nether wart planting wand | `onemillion.plantwand` |
 | `/1mill crops` | Open the crop enable/disable GUI | `onemillion.admin` |
-| `/1mill automode` | Toggle crediting for water/piston/hopper farms | `onemillion.admin` |
+| `/1mill automode` | Toggle automatic harvest crediting | `onemillion.admin` |
 | `/1mill summary` | Inspect the next harvest summary | `onemillion.admin` |
 | `/1mill summary now` | Broadcast the harvest summary immediately | `onemillion.admin` |
 | `/1mill backup` | Create a timestamped SQLite backup | `onemillion.admin` |

@@ -14,9 +14,9 @@ participants:
   allowlist: []
 
 counting:
-  # true: unclaimed crop drops from water, pistons and automatic farms count
-  #       when a participating player eventually collects them, including from storage.
-  # false: only drops traced to a mature crop harvested by a player count.
+  # true: water-harvested crops count automatically without a player collecting them.
+  # false: leave those drops for players to collect and count by hand.
+  # Player pickups and collection from storage count in either mode.
   allow-automated-farms: true
 
   # Prevents Q/drop-and-repickup loops. Keep this enabled for a fair challenge.

@@ -287,15 +287,9 @@ public final class CropPickupListener implements Listener {
             return;
         }
         String eligibleId = eligibleId(item);
-        CropDefinition crop;
-        if (eligibleId != null) {
-            crop = plugin.configManager().crop(eligibleId);
-            if (crop == null || crop.item() != item.getItemStack().getType()) {
-                return;
-            }
-        } else if (plugin.configManager().settings().allowAutomatedFarms()) {
-            crop = materialCrop;
-        } else {
+        CropDefinition crop = playerPickupCrop(materialCrop, eligibleId,
+                eligibleId == null ? null : plugin.configManager().crop(eligibleId));
+        if (crop == null) {
             return;
         }
 
@@ -321,8 +315,7 @@ public final class CropPickupListener implements Listener {
                 ? null
                 : plugin.configManager().crop(eligibleId);
         boolean validEligibleCrop = eligibleCrop != null && eligibleCrop.item() == stack.getType();
-        HopperPickupPolicy policy = hopperPickupPolicy(isBlocked(item), validEligibleCrop,
-                plugin.configManager().settings().allowAutomatedFarms());
+        HopperPickupPolicy policy = hopperPickupPolicy(isBlocked(item));
         if (policy == HopperPickupPolicy.BLOCK) {
             markItemBlocked(stack);
             item.setItemStack(stack);
@@ -469,9 +462,19 @@ public final class CropPickupListener implements Listener {
         return eligible == null ? "automatic" : "eligible:" + eligible;
     }
 
-    static HopperPickupPolicy hopperPickupPolicy(boolean blocked, boolean validEligibleCrop,
-                                                  boolean allowAutomatedFarms) {
-        return !blocked && (validEligibleCrop || allowAutomatedFarms)
+    static CropDefinition playerPickupCrop(CropDefinition materialCrop, String eligibleId,
+                                           CropDefinition eligibleCrop) {
+        if (materialCrop == null) {
+            return null;
+        }
+        if (eligibleId != null) {
+            return eligibleCrop != null && eligibleCrop.item() == materialCrop.item() ? eligibleCrop : null;
+        }
+        return materialCrop;
+    }
+
+    static HopperPickupPolicy hopperPickupPolicy(boolean blocked) {
+        return !blocked
                 ? HopperPickupPolicy.DEFER_UNTIL_PLAYER
                 : HopperPickupPolicy.BLOCK;
     }
