@@ -35,11 +35,14 @@ import org.bukkit.persistence.PersistentDataType;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
 public final class PlantWandListener implements Listener {
     static final long MAX_SELECTION_VOLUME = 32_768L;
+    /** Widest X or Z extent, and furthest the player may stand from the centre, so scans stay in loaded chunks. */
+    static final int MAX_SELECTION_SPAN = 128;
     static final int MAX_PLANTS_PER_USE = 4_096;
     private static final int MAX_EFFECT_BLOCKS = 240;
     private static final int[] CROP_SLOTS = {10, 11, 12, 13, 14, 15, 16, 21, 23};
@@ -112,7 +115,6 @@ public final class PlantWandListener implements Listener {
             return;
         }
         BlockPosition position = BlockPosition.of(clicked);
-        Selection selection = selections.getOrDefault(player.getUniqueId(), new Selection(null, null));
         if (action == Action.LEFT_CLICK_BLOCK) {
             selections.put(player.getUniqueId(), new Selection(position, null));
             showCornerEffect(player, clicked, 0.8f);
@@ -120,7 +122,8 @@ public final class PlantWandListener implements Listener {
             return;
         }
 
-        selection = new Selection(selection.first(), position);
+        Selection previous = selections.get(player.getUniqueId());
+        Selection selection = new Selection(previous == null ? null : previous.first(), position);
         selections.put(player.getUniqueId(), selection);
         showCornerEffect(player, clicked, 1.25f);
         plugin.sendActions("plant-wand-second-corner", player, position.replacements());
@@ -171,11 +174,11 @@ public final class PlantWandListener implements Listener {
     }
 
     private void openCropMenu(Player player, Selection selection) {
-        SelectionCheck check = validate(player, selection);
-        if (check == null) {
+        World world = validate(player, selection);
+        if (world == null) {
             return;
         }
-        List<Block> farmland = findSoil(check.world(), selection, Material.FARMLAND, Material.SOUL_SAND);
+        List<Block> farmland = findSoil(world, selection, Material.FARMLAND, Material.SOUL_SAND);
         if (farmland.isEmpty()) {
             plugin.sendActions("plant-wand-no-farmland", player, Map.of());
             return;
@@ -218,8 +221,8 @@ public final class PlantWandListener implements Listener {
 
     private void plant(Player player, PlantableCrop crop) {
         Selection selection = selections.get(player.getUniqueId());
-        SelectionCheck check = validate(player, selection);
-        if (check == null) {
+        World world = validate(player, selection);
+        if (world == null) {
             return;
         }
         int available = available(player, crop.seed());
@@ -229,7 +232,7 @@ public final class PlantWandListener implements Listener {
             return;
         }
 
-        List<Block> farmland = findSoil(check.world(), selection, crop.soil());
+        List<Block> farmland = findSoil(world, selection, crop.soil());
         if (farmland.isEmpty()) {
             plugin.sendActions("plant-wand-no-farmland", player, Map.of());
             return;
@@ -272,7 +275,8 @@ public final class PlantWandListener implements Listener {
         playPlantEffects(player, planted);
     }
 
-    private SelectionCheck validate(Player player, Selection selection) {
+    /** Returns the selection's world, or null after telling the player why the selection cannot be used. */
+    private World validate(Player player, Selection selection) {
         if (selection == null || selection.first() == null) {
             plugin.sendActions("plant-wand-first-needed", player, Map.of());
             return null;
@@ -298,7 +302,22 @@ public final class PlantWandListener implements Listener {
             ));
             return null;
         }
-        return new SelectionCheck(world);
+        long span = horizontalSpan(selection.first(), selection.second());
+        if (span > MAX_SELECTION_SPAN) {
+            plugin.sendActions("plant-wand-too-wide", player, Map.of(
+                    "span", Text.number(span),
+                    "maximum", Text.number(MAX_SELECTION_SPAN)
+            ));
+            return null;
+        }
+        Location location = player.getLocation();
+        if (!nearSelection(selection, location.getX(), location.getZ())) {
+            plugin.sendActions("plant-wand-too-far", player, Map.of(
+                    "maximum", Text.number(MAX_SELECTION_SPAN)
+            ));
+            return null;
+        }
+        return world;
     }
 
     static List<Block> findSoil(World world, Selection selection, Material... soilTypes) {
@@ -313,6 +332,9 @@ public final class PlantWandListener implements Listener {
         for (int y = minY; y <= maxY; y++) {
             for (int x = minX; x <= maxX; x++) {
                 for (int z = minZ; z <= maxZ; z++) {
+                    if (!world.isChunkLoaded(x >> 4, z >> 4)) {
+                        continue;
+                    }
                     Block soil = world.getBlockAt(x, y, z);
                     if (allowedSoils.contains(soil.getType()) && soil.getRelative(BlockFace.UP).isEmpty()) {
                         farmland.add(soil);
@@ -413,6 +435,21 @@ public final class PlantWandListener implements Listener {
         return saturatingMultiply(saturatingMultiply(x, y), z);
     }
 
+    /** Widest horizontal extent of the selection, counting both corner blocks. */
+    static long horizontalSpan(BlockPosition first, BlockPosition second) {
+        long x = Math.abs((long) first.x() - second.x()) + 1L;
+        long z = Math.abs((long) first.z() - second.z()) + 1L;
+        return Math.max(x, z);
+    }
+
+    static boolean nearSelection(Selection selection, double x, double z) {
+        double centreX = ((long) selection.first().x() + selection.second().x() + 1L) / 2.0;
+        double centreZ = ((long) selection.first().z() + selection.second().z() + 1L) / 2.0;
+        double deltaX = x - centreX;
+        double deltaZ = z - centreZ;
+        return deltaX * deltaX + deltaZ * deltaZ <= (double) MAX_SELECTION_SPAN * MAX_SELECTION_SPAN;
+    }
+
     static int effectStride(int blocks, int maximumEffects) {
         if (blocks <= 0 || maximumEffects <= 0) {
             return 1;
@@ -425,7 +462,7 @@ public final class PlantWandListener implements Listener {
     }
 
     private static String pretty(Material material) {
-        String[] words = material.name().toLowerCase(java.util.Locale.ROOT).split("_");
+        String[] words = material.name().toLowerCase(Locale.ROOT).split("_");
         for (int index = 0; index < words.length; index++) {
             words[index] = Character.toUpperCase(words[index].charAt(0)) + words[index].substring(1);
         }
@@ -453,8 +490,5 @@ public final class PlantWandListener implements Listener {
     }
 
     record Selection(BlockPosition first, BlockPosition second) {
-    }
-
-    private record SelectionCheck(World world) {
     }
 }

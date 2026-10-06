@@ -264,6 +264,16 @@ plant-wand-too-large:
   actions:
     - '[message] %prefix% <white>That selection contains <red>%volume%</red> blocks. The maximum is <#8CE99A>%maximum%</#8CE99A>.</white>'
     - '[sound] ENTITY_VILLAGER_NO 0.6 0.9'
+plant-wand-too-wide:
+  enabled: true
+  actions:
+    - '[message] %prefix% <white>That selection is <red>%span%</red> blocks across. The maximum is <#8CE99A>%maximum%</#8CE99A>.</white>'
+    - '[sound] ENTITY_VILLAGER_NO 0.6 0.9'
+plant-wand-too-far:
+  enabled: true
+  actions:
+    - '[message] %prefix% <white>Stand within <#8CE99A>%maximum%</#8CE99A> blocks of your selection to plant it.</white>'
+    - '[sound] ENTITY_VILLAGER_NO 0.6 0.9'
 plant-wand-no-farmland:
   enabled: true
   actions:
