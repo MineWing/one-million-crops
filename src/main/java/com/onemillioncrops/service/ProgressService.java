@@ -2,6 +2,7 @@ package com.onemillioncrops.service;
 
 import com.onemillioncrops.model.CropDefinition;
 import com.onemillioncrops.model.ProgressSnapshot;
+import com.onemillioncrops.util.Numbers;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -68,7 +69,7 @@ public final class ProgressService {
         totals.put(cropId, newAmount);
         if (player != null) {
             contributions.computeIfAbsent(player, ignored -> new LinkedHashMap<>())
-                    .merge(cropId, actual, ProgressService::saturatingAdd);
+                    .merge(cropId, actual, Numbers::saturatingAdd);
         }
 
         List<Integer> crossed = new ArrayList<>();
@@ -90,10 +91,6 @@ public final class ProgressService {
         long whole = (target / 100L) * percent;
         long remainder = target % 100L;
         return whole + (remainder * percent + 99L) / 100L;
-    }
-
-    private static long saturatingAdd(long left, long right) {
-        return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
     }
 
     public synchronized void resetAll() {

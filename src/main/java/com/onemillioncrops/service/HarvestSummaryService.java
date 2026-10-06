@@ -2,6 +2,7 @@ package com.onemillioncrops.service;
 
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.data.ProgressDatabase;
+import com.onemillioncrops.util.Numbers;
 import com.onemillioncrops.util.Text;
 import net.kyori.adventure.bossbar.BossBar;
 import org.bukkit.Bukkit;
@@ -55,7 +56,7 @@ public final class HarvestSummaryService {
         if (amount <= 0 || !plugin.configManager().harvestSummary().enabled()) {
             return;
         }
-        harvested.merge(player.getUniqueId(), amount, HarvestSummaryService::saturatingAdd);
+        harvested.merge(player.getUniqueId(), amount, Numbers::saturatingAdd);
     }
 
     public void stop() {
@@ -83,7 +84,7 @@ public final class HarvestSummaryService {
     public SummaryStatus status() {
         long total = 0L;
         for (long amount : harvested.values()) {
-            total = saturatingAdd(total, amount);
+            total = Numbers.saturatingAdd(total, amount);
         }
         boolean scheduled = task != null && !task.isCancelled();
         long remainingMillis = scheduled ? Math.max(0L, nextRunAtMillis - System.currentTimeMillis()) : 0L;
@@ -123,7 +124,7 @@ public final class HarvestSummaryService {
         List<SummaryActionService.SummaryEntry> entries = new ArrayList<>();
         Map<UUID, Long> improvedPersonalBests = new HashMap<>();
         for (PlayerTotal summary : players) {
-            total = saturatingAdd(total, summary.amount());
+            total = Numbers.saturatingAdd(total, summary.amount());
             UUID playerId = summary.player().getUniqueId();
             boolean personalBest = recordPersonalBest(personalBests, playerId, summary.amount());
             if (personalBest) {
@@ -293,10 +294,6 @@ public final class HarvestSummaryService {
 
     static void mergePersonalBests(Map<UUID, Long> personalBests, Map<UUID, Long> loaded) {
         loaded.forEach((player, amount) -> personalBests.merge(player, amount, Math::max));
-    }
-
-    private static long saturatingAdd(long left, long right) {
-        return right > 0L && left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
     }
 
     private record PlayerTotal(Player player, long amount) {
