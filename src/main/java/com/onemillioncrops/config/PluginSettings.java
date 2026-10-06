@@ -35,6 +35,15 @@ public record PluginSettings(
         ALLOWLIST
     }
 
+    public PluginSettings withAllowAutomatedFarms(boolean enabled) {
+        return new PluginSettings(target, participantMode, participantAllowlist, enabled, blockPlayerRedrops,
+                requireMatureCrops, autosaveSeconds, databaseFile, backupBeforeReset, scoreboardEnabled,
+                scoreboardAnimationTicks, scoreboardRefreshTicks, scoreboardPageTicks, scoreboardCropsPerPage,
+                scoreboardTitleAnimationFrames, scoreboardTitleFrames, guiAnimationTicks, guiPickupSound,
+                milestones, celebrationFireworks, fireworkGapTicks, completionSound, completionVolume,
+                completionPitch);
+    }
+
     public boolean mayContribute(UUID uuid) {
         return participantMode == ParticipantMode.EVERYONE || participantAllowlist.contains(uuid);
     }

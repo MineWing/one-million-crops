@@ -13,6 +13,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProgressServiceTest {
@@ -72,6 +73,19 @@ class ProgressServiceTest {
         assertEquals(32, service.amount("wheat"));
         assertTrue(service.contributors().isEmpty());
         assertEquals(0, service.contribution(PLAYER, "wheat"));
+    }
+
+    @Test
+    void takeSnapshotReturnsStateAndClearsDirtyFlag() {
+        ProgressService service = service(100);
+        assertEquals(0L, service.takeSnapshot().totals().get("wheat"));
+
+        service.add(PLAYER, "wheat", 5);
+        var snapshot = service.takeSnapshot();
+
+        assertEquals(5L, snapshot.totals().get("wheat"));
+        assertFalse(service.isDirty());
+        assertNull(service.takeDirtySnapshot());
     }
 
     private static ProgressService service(long target) {

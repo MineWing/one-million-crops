@@ -147,6 +147,15 @@ public final class ProgressService {
         return snapshot();
     }
 
+    /**
+     * Returns the current state whether or not it changed, clearing the dirty flag so a queued
+     * autosave cannot write the same state again after the caller has persisted it.
+     */
+    public synchronized ProgressSnapshot takeSnapshot() {
+        dirty = false;
+        return snapshot();
+    }
+
     public synchronized void markDirty() {
         dirty = true;
     }

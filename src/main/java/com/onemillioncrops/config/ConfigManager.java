@@ -461,19 +461,27 @@ public final class ConfigManager {
             throw new IllegalArgumentException("Unknown configured crop: " + cropId);
         }
         yaml.set("crops." + normalised + ".enabled", enabled);
-        saveAtomically(yaml, cropsFile);
+        writeAtomically(cropsFile, yaml);
         return read();
     }
 
-    public LoadedConfiguration setAllowAutomatedFarms(boolean enabled) throws IOException {
+    /**
+     * Persists counting.allow-automated-farms only. Nothing is re-read, so unrelated hand edits to
+     * config.yml, crops.yml or messages.yml wait for a reload instead of bypassing the progress rebuild.
+     */
+    public void setAllowAutomatedFarms(boolean enabled) throws IOException {
         File configFile = new File(plugin.getDataFolder(), "config.yml");
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(configFile);
         yaml.set("counting.allow-automated-farms", enabled);
-        saveAtomically(yaml, configFile);
-        return read();
+        writeAtomically(configFile, yaml);
     }
 
-    private static void saveAtomically(YamlConfiguration yaml, File file) throws IOException {
+    /** Applies counting.allow-automated-farms to the live settings, leaving everything else untouched. */
+    public void applyAllowAutomatedFarms(boolean enabled) {
+        settings = settings.withAllowAutomatedFarms(enabled);
+    }
+
+    private static void writeAtomically(File file, YamlConfiguration yaml) throws IOException {
         Path destination = file.toPath();
         String name = file.getName();
         String prefix = name.substring(0, name.lastIndexOf('.')) + "-";

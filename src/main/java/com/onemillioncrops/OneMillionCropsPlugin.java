@@ -268,9 +268,9 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         boolean enable = !configManager.settings().allowAutomatedFarms();
         Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
             try {
-                ConfigManager.LoadedConfiguration loaded = configManager.setAllowAutomatedFarms(enable);
+                configManager.setAllowAutomatedFarms(enable);
                 runSyncIfActive(() -> {
-                    configManager.apply(loaded);
+                    configManager.applyAllowAutomatedFarms(enable);
                     endOperation();
                     sendActions(enable ? "automode-enabled" : "automode-disabled", sender, Map.of());
                 });
@@ -328,7 +328,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                     ProgressSnapshot beforeReset;
                     synchronized (stateLock) {
                         pendingCompletions.clear();
-                        beforeReset = progress.snapshot();
+                        beforeReset = progress.takeSnapshot();
                     }
                     database.save(beforeReset, configManager.crops().keySet());
                     if (configManager.settings().backupBeforeReset()) {
@@ -353,8 +353,9 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                     scoreboards.updateAll();
                     gui.refreshOpen();
                 });
-            } catch (SQLException | IOException exception) {
+            } catch (Exception exception) {
                 getLogger().log(Level.SEVERE, "Could not reset progress", exception);
+                progress.markDirty();
                 runSyncIfActive(() -> {
                     endOperation();
                     sendActions("reset-failed", sender, Map.of());
@@ -381,8 +382,13 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
     private void drainSaves() {
         boolean failed = false;
         try {
-            while (!maintenance && !shuttingDown) {
+            while (true) {
                 synchronized (persistenceLock) {
+                    // Check under the lock: a reset or shutdown may have run while this thread waited,
+                    // and saving pre-reset state now would overwrite its work.
+                    if (maintenance || shuttingDown) {
+                        break;
+                    }
                     CompletionWork completion;
                     ProgressSnapshot snapshot = null;
                     synchronized (stateLock) {
@@ -406,7 +412,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                     database.save(snapshot, configManager.crops().keySet());
                 }
             }
-        } catch (SQLException exception) {
+        } catch (SQLException | RuntimeException exception) {
             failed = true;
             progress.markDirty();
             getLogger().log(Level.SEVERE, "Could not save crop progress; it will be retried", exception);
@@ -422,10 +428,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
     private void flushAllNow(boolean announceCompletions) throws SQLException {
         ProgressSnapshot current;
         synchronized (stateLock) {
-            current = progress.takeDirtySnapshot();
-            if (current == null) {
-                current = progress.snapshot();
-            }
+            current = progress.takeSnapshot();
         }
         database.save(current, configManager.crops().keySet());
         CompletionWork completion;
