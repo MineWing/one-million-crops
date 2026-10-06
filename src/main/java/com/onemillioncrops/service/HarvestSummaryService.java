@@ -1,22 +1,23 @@
 package com.onemillioncrops.service;
 
 import com.onemillioncrops.OneMillionCropsPlugin;
+import com.onemillioncrops.data.ProgressDatabase;
 import com.onemillioncrops.util.Text;
 import net.kyori.adventure.bossbar.BossBar;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.sql.SQLException;
-import java.util.HashSet;
 import java.util.logging.Level;
 
 /** Announces how much each currently online player harvested during the configured time window. */
@@ -32,6 +33,8 @@ public final class HarvestSummaryService {
     private String countdownTitle;
     private long intervalMillis;
     private long nextRunAtMillis;
+    /** Bumped by a reset so a personal-best load that started before it cannot restore stale bests. */
+    private int personalBestGeneration;
 
     public HarvestSummaryService(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
@@ -40,13 +43,7 @@ public final class HarvestSummaryService {
 
     public void start() {
         stopTask();
-        try {
-            Map<UUID, Long> loadedPersonalBests = plugin.database().harvestPersonalBests();
-            personalBests.clear();
-            personalBests.putAll(loadedPersonalBests);
-        } catch (SQLException exception) {
-            plugin.getLogger().log(Level.SEVERE, "Could not load harvest-summary personal bests", exception);
-        }
+        loadPersonalBests();
         if (plugin.configManager().harvestSummary().enabled()) {
             schedule();
         } else {
@@ -67,6 +64,7 @@ public final class HarvestSummaryService {
     }
 
     public void resetPersonalBests() {
+        personalBestGeneration++;
         personalBests.clear();
     }
 
@@ -134,13 +132,53 @@ public final class HarvestSummaryService {
             entries.add(new SummaryActionService.SummaryEntry(
                     summary.player().getName(), summary.amount(), personalBest));
         }
-        try {
-            plugin.database().saveHarvestPersonalBests(improvedPersonalBests);
-        } catch (SQLException exception) {
-            plugin.getLogger().log(Level.SEVERE, "Could not save harvest-summary personal bests", exception);
-        }
+        savePersonalBests(improvedPersonalBests);
         actions.execute(plugin.configManager().harvestSummary().actions(),
                 players.stream().map(PlayerTotal::player).toList(), entries, total, intervalMinutes);
+    }
+
+    /**
+     * Reads stored personal bests off the server thread. The result is merged rather than swapped in,
+     * so a summary announced while the query was running keeps any best it just set.
+     */
+    private void loadPersonalBests() {
+        if (!plugin.isEnabled()) {
+            return;
+        }
+        ProgressDatabase database = plugin.database();
+        int generation = personalBestGeneration;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            Map<UUID, Long> loaded;
+            try {
+                loaded = database.harvestPersonalBests();
+            } catch (SQLException exception) {
+                plugin.getLogger().log(Level.SEVERE, "Could not load harvest-summary personal bests", exception);
+                return;
+            }
+            if (!plugin.isEnabled()) {
+                return;
+            }
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (generation == personalBestGeneration) {
+                    mergePersonalBests(personalBests, loaded);
+                }
+            });
+        });
+    }
+
+    private void savePersonalBests(Map<UUID, Long> improved) {
+        if (improved.isEmpty() || !plugin.isEnabled()) {
+            return;
+        }
+        ProgressDatabase database = plugin.database();
+        Map<UUID, Long> snapshot = Map.copyOf(improved);
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                database.saveHarvestPersonalBests(snapshot);
+            } catch (SQLException exception) {
+                plugin.getLogger().log(Level.SEVERE, "Could not save harvest-summary personal bests", exception);
+            }
+        });
     }
 
     private void stopTask() {
@@ -251,6 +289,10 @@ public final class HarvestSummaryService {
         }
         personalBests.put(player, amount);
         return true;
+    }
+
+    static void mergePersonalBests(Map<UUID, Long> personalBests, Map<UUID, Long> loaded) {
+        loaded.forEach((player, amount) -> personalBests.merge(player, amount, Math::max));
     }
 
     private static long saturatingAdd(long left, long right) {
