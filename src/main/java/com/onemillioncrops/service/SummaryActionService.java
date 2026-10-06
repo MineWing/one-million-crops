@@ -18,15 +18,19 @@ import org.bukkit.inventory.meta.FireworkMeta;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Executes the configurable actions used by the periodic harvest summary. */
+/** Executes configurable action lists, such as the periodic harvest summary and event feedback. */
 public final class SummaryActionService {
     private static final Pattern ACTION = Pattern.compile("^\\s*\\[([a-zA-Z]+)](?:\\s?(.*))?$", Pattern.DOTALL);
+    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+    private static final Pattern FIELD_SEPARATOR = Pattern.compile("\\s*\\|\\s*");
+    private static final Pattern HEX_COLOR = Pattern.compile("[0-9a-fA-F]{6}");
     private static final String PERSONAL_BEST_AMOUNT =
             "<#FFD166><bold>%s</bold></#FFD166> "
                     + "<dark_gray>(</dark_gray><#8CE99A>NEW PB</#8CE99A><dark_gray>)</dark_gray>";
@@ -45,7 +49,7 @@ public final class SummaryActionService {
         if (!configured.enabled()) {
             return;
         }
-        Map<String, String> common = new java.util.HashMap<>(replacements);
+        Map<String, String> common = new HashMap<>(replacements);
         common.putIfAbsent("prefix", plugin.configManager().message("prefix"));
         executeExpanded(configured.actions(), recipients, players, rows, Map.copyOf(common));
     }
@@ -57,8 +61,7 @@ public final class SummaryActionService {
                 "minutes", Integer.toString(intervalMinutes),
                 "prefix", plugin.configManager().message("prefix")
         );
-        List<Map<String, String>> rows = entries.stream().map(SummaryActionService::row).toList();
-        executeExpanded(configuredActions, recipients, recipients, rows, common);
+        executeExpanded(configuredActions, recipients, recipients, rows(entries), common);
     }
 
     private void executeExpanded(List<String> configuredActions, List<? extends Audience> recipients,
@@ -70,8 +73,7 @@ public final class SummaryActionService {
                 plugin.getLogger().warning("Ignoring invalid harvestSummary action: " + configuredAction);
                 continue;
             }
-            List<String> payloads = expandRows(action.payload(), rows, common);
-            for (String payload : payloads) {
+            for (String payload : expandRows(action.payload(), rows, common)) {
                 execute(action.tag(), payload, recipients, players);
             }
         }
@@ -98,7 +100,7 @@ public final class SummaryActionService {
 
     private void sendMessage(String payload, List<? extends Audience> recipients) {
         Component message = plugin.text().parse(payload);
-        recipients.forEach(player -> player.sendMessage(message));
+        recipients.forEach(audience -> audience.sendMessage(message));
     }
 
     private void playSound(String payload, List<Player> recipients) {
@@ -204,8 +206,11 @@ public final class SummaryActionService {
     }
 
     static List<String> expand(String payload, List<SummaryEntry> entries, Map<String, String> common) {
-        List<Map<String, String>> rows = entries.stream().map(SummaryActionService::row).toList();
-        return expandRows(payload, rows, common);
+        return expandRows(payload, rows(entries), common);
+    }
+
+    private static List<Map<String, String>> rows(List<SummaryEntry> entries) {
+        return entries.stream().map(SummaryActionService::row).toList();
     }
 
     private static Map<String, String> row(SummaryEntry entry) {
@@ -228,7 +233,7 @@ public final class SummaryActionService {
         }
         List<String> expanded = new ArrayList<>();
         for (Map<String, String> row : rows) {
-            Map<String, String> replacements = new java.util.HashMap<>(common);
+            Map<String, String> replacements = new HashMap<>(common);
             replacements.putAll(row);
             expanded.add(Text.replace(payload, replacements));
         }
@@ -237,11 +242,11 @@ public final class SummaryActionService {
 
     private static String[] words(String input) {
         String stripped = input.strip();
-        return stripped.isEmpty() ? new String[0] : stripped.split("\\s+");
+        return stripped.isEmpty() ? new String[0] : WHITESPACE.split(stripped);
     }
 
     private static String[] fields(String input) {
-        return input.split("\\s*\\|\\s*", -1);
+        return FIELD_SEPARATOR.split(input, -1);
     }
 
     private static String required(String[] arguments, int index, String name) {
@@ -318,7 +323,7 @@ public final class SummaryActionService {
             if (hex.startsWith("#")) {
                 hex = hex.substring(1);
             }
-            if (!hex.matches("[0-9a-fA-F]{6}")) {
+            if (!HEX_COLOR.matcher(hex).matches()) {
                 throw new IllegalArgumentException("firework colors must be six-digit hex values");
             }
             colors.add(Color.fromRGB(Integer.parseInt(hex, 16)));

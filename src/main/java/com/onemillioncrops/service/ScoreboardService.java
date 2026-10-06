@@ -2,6 +2,7 @@ package com.onemillioncrops.service;
 
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.model.CropDefinition;
+import com.onemillioncrops.util.Numbers;
 import com.onemillioncrops.util.Text;
 import io.papermc.paper.scoreboard.numbers.NumberFormat;
 import net.kyori.adventure.text.Component;
@@ -90,8 +91,8 @@ public final class ScoreboardService {
         if (playerBoard == null || hidden.contains(player.getUniqueId())) {
             return;
         }
-        updateTitle(playerBoard);
-        updateLines(playerBoard);
+        applyTitle(playerBoard, currentTitle());
+        applyLines(playerBoard, buildLines());
     }
 
     private void animate(int elapsedTicks) {
@@ -102,6 +103,8 @@ public final class ScoreboardService {
         if (refreshData) {
             dataRefreshTicks %= refreshPeriod;
         }
+        Component title = currentTitle();
+        List<Component> lines = null;
         for (Player player : Bukkit.getOnlinePlayers()) {
             if (hidden.contains(player.getUniqueId())) {
                 continue;
@@ -111,17 +114,23 @@ public final class ScoreboardService {
                 showIfEnabled(player);
                 continue;
             }
-            updateTitle(board);
+            applyTitle(board, title);
             if (refreshData) {
-                updateLines(board);
+                if (lines == null) {
+                    lines = buildLines();
+                }
+                applyLines(board, lines);
             }
         }
     }
 
-    private void updateTitle(PlayerBoard board) {
+    private Component currentTitle() {
         int animationPeriod = plugin.configManager().settings().scoreboardAnimationTicks();
         long step = animationTick / Math.max(1, animationPeriod);
-        Component title = titleFrames.get((int) (step % titleFrames.size()));
+        return titleFrames.get((int) (step % titleFrames.size()));
+    }
+
+    private static void applyTitle(PlayerBoard board, Component title) {
         if (title.equals(board.displayedTitle())) {
             return;
         }
@@ -129,18 +138,24 @@ public final class ScoreboardService {
         board.displayedTitle(title);
     }
 
-    private void updateLines(PlayerBoard playerBoard) {
+    /** Builds the sidebar lines, which are identical for every player, from one snapshot of the totals. */
+    private List<Component> buildLines() {
         int perPage = plugin.configManager().settings().scoreboardCropsPerPage();
+        long target = plugin.progress().target();
         List<CropDefinition> crops = new ArrayList<>(plugin.progress().crops().values());
-        crops.sort(Comparator.comparingLong((CropDefinition crop) -> plugin.progress().amount(crop.id()))
-                .reversed());
+        Map<String, Long> amounts = new HashMap<>();
+        long total = 0L;
+        for (CropDefinition crop : crops) {
+            long amount = plugin.progress().amount(crop.id());
+            amounts.put(crop.id(), amount);
+            total = Numbers.saturatingAdd(total, amount);
+        }
+        crops.sort(Comparator.comparingLong((CropDefinition crop) -> amounts.get(crop.id())).reversed());
         int pages = Math.max(1, (crops.size() + perPage - 1) / perPage);
         int page = (int) ((animationTick / plugin.configManager().settings().scoreboardPageTicks()) % pages);
         int start = page * perPage;
         int end = Math.min(crops.size(), start + perPage);
-        long totalTarget = saturatingMultiply(plugin.progress().target(), crops.size());
-        long total = crops.stream().mapToLong(crop -> plugin.progress().amount(crop.id()))
-                .reduce(0L, ScoreboardService::saturatingAdd);
+        long totalTarget = Numbers.saturatingMultiply(target, crops.size());
 
         List<Component> lines = new ArrayList<>();
         lines.add(plugin.text().parse("<gray>Overall Progress</gray>"));
@@ -151,21 +166,20 @@ public final class ScoreboardService {
         lines.add(plugin.text().parse("<yellow><bold>Crops</bold></yellow> <dark_gray>(" + (page + 1) + "/" + pages + ")</dark_gray>"));
         for (int index = start; index < end; index++) {
             CropDefinition crop = crops.get(index);
-            long amount = plugin.progress().amount(crop.id());
-            String marker = amount >= plugin.progress().target() ? "<green>✔</green>" : "<dark_gray>•</dark_gray>";
+            long amount = amounts.get(crop.id());
+            String marker = amount >= target ? "<green>✔</green>" : "<dark_gray>•</dark_gray>";
             lines.add(plugin.text().parse(marker + " " + crop.displayMiniMessage()
                     + " <white>" + compact(amount) + "</white>"));
         }
         lines.add(Component.empty());
         lines.add(plugin.text().parse("<gray>/progress for details</gray>"));
-        applyLines(playerBoard, lines);
+        return lines;
     }
 
     private PlayerBoard createBoard() {
         Scoreboard scoreboard = Bukkit.getScoreboardManager().getNewScoreboard();
         Component initialTitle = Component.text("One Million Crops");
-        Objective objective = scoreboard.registerNewObjective("millioncrops", Criteria.DUMMY,
-                initialTitle);
+        Objective objective = scoreboard.registerNewObjective("millioncrops", Criteria.DUMMY, initialTitle);
         objective.setDisplaySlot(DisplaySlot.SIDEBAR);
         List<Team> lineTeams = new ArrayList<>();
         List<Component> rendered = new ArrayList<>();
@@ -205,14 +219,6 @@ public final class ScoreboardService {
             return String.format(Locale.US, "%.1fk", amount / 1_000.0);
         }
         return Long.toString(amount);
-    }
-
-    private static long saturatingMultiply(long value, int multiplier) {
-        return multiplier > 0 && value > Long.MAX_VALUE / multiplier ? Long.MAX_VALUE : value * multiplier;
-    }
-
-    private static long saturatingAdd(long left, long right) {
-        return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
     }
 
     public void remove(Player player) {

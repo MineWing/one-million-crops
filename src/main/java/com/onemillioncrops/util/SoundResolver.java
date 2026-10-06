@@ -5,8 +5,13 @@ import org.bukkit.Registry;
 import org.bukkit.Sound;
 
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class SoundResolver {
+    /** Legacy enum-style names resolve by scanning the whole registry, so successful lookups are remembered. */
+    private static final Map<String, Sound> LEGACY_SOUNDS = new ConcurrentHashMap<>();
+
     private SoundResolver() {
     }
 
@@ -22,11 +27,19 @@ public final class SoundResolver {
         }
 
         String legacyName = configured.toUpperCase(Locale.ROOT);
-        return Registry.SOUNDS.keyStream()
+        Sound cached = LEGACY_SOUNDS.get(legacyName);
+        if (cached != null) {
+            return cached;
+        }
+        Sound legacy = Registry.SOUNDS.keyStream()
                 .filter(key -> legacyName(key).equals(legacyName))
                 .findFirst()
                 .map(Registry.SOUNDS::get)
                 .orElse(null);
+        if (legacy != null) {
+            LEGACY_SOUNDS.put(legacyName, legacy);
+        }
+        return legacy;
     }
 
     private static String legacyName(NamespacedKey key) {

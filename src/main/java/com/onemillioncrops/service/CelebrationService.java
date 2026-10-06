@@ -6,6 +6,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -19,10 +20,7 @@ public final class CelebrationService {
     }
 
     public void milestone(CropDefinition crop, int percent) {
-        List<Player> players = new java.util.ArrayList<>();
-        Bukkit.getOnlinePlayers().stream()
-                .filter(player -> plugin.configManager().settings().mayContribute(player.getUniqueId()))
-                .forEach(players::add);
+        List<Player> players = contributingPlayers();
         plugin.actions().execute("milestone", players, players, List.of(), Map.of(
                 "crop", crop.displayMiniMessage(),
                 "percent", Integer.toString(percent),
@@ -31,10 +29,7 @@ public final class CelebrationService {
     }
 
     public void completedPersisted(CropDefinition crop, boolean grandFinale) {
-        List<Player> players = new java.util.ArrayList<>();
-        Bukkit.getOnlinePlayers().stream()
-                .filter(player -> plugin.configManager().settings().mayContribute(player.getUniqueId()))
-                .forEach(players::add);
+        List<Player> players = contributingPlayers();
         plugin.actions().execute("completed-broadcast", players, players, List.of(), Map.of(
                 "crop", crop.displayMiniMessage(),
                 "target", Long.toString(plugin.progress().target())
@@ -69,6 +64,16 @@ public final class CelebrationService {
                 plugin.getLogger().log(Level.SEVERE, "Could not load pending celebrations", exception);
             }
         }, 30L);
+    }
+
+    private List<Player> contributingPlayers() {
+        List<Player> players = new ArrayList<>();
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (plugin.configManager().settings().mayContribute(player.getUniqueId())) {
+                players.add(player);
+            }
+        }
+        return players;
     }
 
     private void play(Player player, CropDefinition crop, boolean grandFinale) {
