@@ -12,7 +12,9 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.reflect.RecordComponent;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -476,34 +478,66 @@ public final class ConfigManager {
             throw new IllegalArgumentException("Unknown configured crop: " + cropId);
         }
         yaml.set("crops." + normalised + ".enabled", enabled);
-
-        Path destination = cropsFile.toPath();
-        Path temporary = Files.createTempFile(destination.getParent(), "crops-", ".yml.tmp");
-        Files.writeString(temporary, yaml.saveToString(), StandardCharsets.UTF_8);
-        try {
-            Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE);
-        } catch (java.nio.file.AtomicMoveNotSupportedException exception) {
-            Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING);
-        }
+        writeAtomically(cropsFile, yaml);
         return read();
     }
 
-    public LoadedConfiguration setAllowAutomatedFarms(boolean enabled) throws IOException {
+    /**
+     * Persists counting.allow-automated-farms only. Nothing is re-read, so unrelated hand edits to
+     * config.yml, crops.yml or messages.yml wait for a reload instead of bypassing the progress rebuild.
+     */
+    public void setAllowAutomatedFarms(boolean enabled) throws IOException {
         File configFile = new File(plugin.getDataFolder(), "config.yml");
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(configFile);
         yaml.set("counting.allow-automated-farms", enabled);
+        writeAtomically(configFile, yaml);
+    }
 
-        Path destination = configFile.toPath();
-        Path temporary = Files.createTempFile(destination.getParent(), "config-", ".yml.tmp");
+    /** Applies counting.allow-automated-farms to the live settings, leaving everything else untouched. */
+    public void applyAllowAutomatedFarms(boolean enabled) {
+        settings = withSetting(settings, "allowAutomatedFarms", enabled);
+    }
+
+    /**
+     * Copies settings with one record component replaced. Walking the record components keeps
+     * this correct as settings are added or removed, without a hand-written copy of every field.
+     */
+    static PluginSettings withSetting(PluginSettings settings, String component, Object value) {
+        RecordComponent[] components = PluginSettings.class.getRecordComponents();
+        Class<?>[] types = new Class<?>[components.length];
+        Object[] values = new Object[components.length];
+        boolean found = false;
+        try {
+            for (int index = 0; index < components.length; index++) {
+                types[index] = components[index].getType();
+                if (components[index].getName().equals(component)) {
+                    values[index] = value;
+                    found = true;
+                } else {
+                    values[index] = components[index].getAccessor().invoke(settings);
+                }
+            }
+            if (!found) {
+                throw new IllegalArgumentException("Unknown setting: " + component);
+            }
+            return PluginSettings.class.getDeclaredConstructor(types).newInstance(values);
+        } catch (ReflectiveOperationException exception) {
+            throw new IllegalStateException("Could not update setting " + component, exception);
+        }
+    }
+
+    private static void writeAtomically(File file, YamlConfiguration yaml) throws IOException {
+        Path destination = file.toPath();
+        String name = file.getName();
+        String prefix = name.substring(0, name.lastIndexOf('.')) + "-";
+        Path temporary = Files.createTempFile(destination.getParent(), prefix, ".yml.tmp");
         Files.writeString(temporary, yaml.saveToString(), StandardCharsets.UTF_8);
         try {
             Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);
-        } catch (java.nio.file.AtomicMoveNotSupportedException exception) {
+        } catch (AtomicMoveNotSupportedException exception) {
             Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING);
         }
-        return read();
     }
 
     private Material parseMaterial(String name, String path) {

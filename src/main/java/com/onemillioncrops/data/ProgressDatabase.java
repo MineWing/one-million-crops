@@ -15,17 +15,32 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.List;
-import java.util.ArrayList;
 import java.util.logging.Logger;
 
 public final class ProgressDatabase implements AutoCloseable {
     private static final DateTimeFormatter BACKUP_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss-SSS");
+    private static final String INSERT_PROGRESS =
+            "INSERT INTO crop_progress(crop_id, amount, completed) VALUES (?, ?, ?)";
+    private static final String KEEP_HIGHER_PROGRESS = """
+             ON CONFLICT(crop_id) DO UPDATE SET
+                amount=MAX(crop_progress.amount, excluded.amount),
+                completed=MAX(crop_progress.completed, excluded.completed)
+            """;
+    private static final String INSERT_CONTRIBUTION =
+            "INSERT INTO contributions(player_uuid, crop_id, amount) VALUES (?, ?, ?)";
+    private static final String KEEP_HIGHER_CONTRIBUTION = """
+             ON CONFLICT(player_uuid, crop_id) DO UPDATE SET
+                amount=MAX(contributions.amount, excluded.amount)
+            """;
 
     private final Path dataFolder;
     private final Logger logger;
@@ -136,16 +151,20 @@ public final class ProgressDatabase implements AutoCloseable {
         return new ProgressSnapshot(totals, contributions, completed);
     }
 
-    public synchronized void save(ProgressSnapshot snapshot) throws SQLException {
-        transaction(() -> replaceSnapshot(snapshot));
-    }
-
     /**
      * Replaces progress for the currently managed crops while retaining rows for disabled crops.
      * This lets a crop be switched off temporarily without losing its total or contributions.
      */
     public synchronized void save(ProgressSnapshot snapshot, Set<String> managedCropIds) throws SQLException {
-        transaction(() -> replaceManagedSnapshot(snapshot, managedCropIds));
+        transaction(() -> {
+            // Also clear every crop the snapshot carries, so a snapshot that disagrees with the
+            // managed set can never hit a primary-key conflict and block every later save.
+            Set<String> replaced = new LinkedHashSet<>(managedCropIds);
+            replaced.addAll(snapshot.totals().keySet());
+            snapshot.contributions().values().forEach(values -> replaced.addAll(values.keySet()));
+            deleteCropRows(replaced, "crop_progress", "contributions");
+            writeSnapshot(snapshot, false);
+        });
     }
 
     public synchronized Map<UUID, Long> harvestPersonalBests() throws SQLException {
@@ -190,7 +209,7 @@ public final class ProgressDatabase implements AutoCloseable {
     public synchronized void saveCompletion(ProgressSnapshot snapshot, String cropId, Set<UUID> players,
                                             boolean grandFinale) throws SQLException {
         transaction(() -> {
-            mergeSnapshot(snapshot);
+            writeSnapshot(snapshot, true);
             try (PreparedStatement statement = connection.prepareStatement(
                     "INSERT INTO pending_celebrations(player_uuid, crop_id, grand_finale) VALUES (?, ?, ?) "
                             + "ON CONFLICT(player_uuid, crop_id) DO UPDATE SET "
@@ -206,91 +225,15 @@ public final class ProgressDatabase implements AutoCloseable {
         });
     }
 
-    private void mergeSnapshot(ProgressSnapshot snapshot) throws SQLException {
-        try (PreparedStatement progress = connection.prepareStatement("""
-                 INSERT INTO crop_progress(crop_id, amount, completed) VALUES (?, ?, ?)
-                 ON CONFLICT(crop_id) DO UPDATE SET
-                     amount=MAX(crop_progress.amount, excluded.amount),
-                     completed=MAX(crop_progress.completed, excluded.completed)
-                 """);
-             PreparedStatement contribution = connection.prepareStatement("""
-                 INSERT INTO contributions(player_uuid, crop_id, amount) VALUES (?, ?, ?)
-                 ON CONFLICT(player_uuid, crop_id) DO UPDATE SET
-                     amount=MAX(contributions.amount, excluded.amount)
-                 """)) {
-            for (Map.Entry<String, Long> entry : snapshot.totals().entrySet()) {
-                progress.setString(1, entry.getKey());
-                progress.setLong(2, entry.getValue());
-                progress.setBoolean(3, snapshot.completed().getOrDefault(entry.getKey(), false));
-                progress.addBatch();
-            }
-            progress.executeBatch();
-            for (Map.Entry<UUID, Map<String, Long>> player : snapshot.contributions().entrySet()) {
-                for (Map.Entry<String, Long> entry : player.getValue().entrySet()) {
-                    contribution.setString(1, player.getKey().toString());
-                    contribution.setString(2, entry.getKey());
-                    contribution.setLong(3, entry.getValue());
-                    contribution.addBatch();
-                }
-            }
-            contribution.executeBatch();
-        }
-    }
-
-    private void replaceSnapshot(ProgressSnapshot snapshot) throws SQLException {
-        try (Statement clear = connection.createStatement()) {
-            clear.executeUpdate("DELETE FROM crop_progress");
-            clear.executeUpdate("DELETE FROM contributions");
-        }
-        try (PreparedStatement progress = connection.prepareStatement("""
-                 INSERT INTO crop_progress(crop_id, amount, completed) VALUES (?, ?, ?)
-                 """);
-             PreparedStatement contribution = connection.prepareStatement("""
-                 INSERT INTO contributions(player_uuid, crop_id, amount) VALUES (?, ?, ?)
-                 """)) {
-            for (Map.Entry<String, Long> entry : snapshot.totals().entrySet()) {
-                progress.setString(1, entry.getKey());
-                progress.setLong(2, entry.getValue());
-                progress.setBoolean(3, snapshot.completed().getOrDefault(entry.getKey(), false));
-                progress.addBatch();
-            }
-            progress.executeBatch();
-            for (Map.Entry<UUID, Map<String, Long>> player : snapshot.contributions().entrySet()) {
-                for (Map.Entry<String, Long> entry : player.getValue().entrySet()) {
-                    contribution.setString(1, player.getKey().toString());
-                    contribution.setString(2, entry.getKey());
-                    contribution.setLong(3, entry.getValue());
-                    contribution.addBatch();
-                }
-            }
-            contribution.executeBatch();
-        }
-    }
-
-    private void replaceManagedSnapshot(ProgressSnapshot snapshot, Set<String> managedCropIds) throws SQLException {
+    /**
+     * Writes the snapshot's totals and contributions. With {@code keepHigher}, existing rows win
+     * when they are further along; otherwise the caller must have cleared the rows first.
+     */
+    private void writeSnapshot(ProgressSnapshot snapshot, boolean keepHigher) throws SQLException {
         try (PreparedStatement progress = connection.prepareStatement(
-                "DELETE FROM crop_progress WHERE crop_id=?");
-             PreparedStatement contributions = connection.prepareStatement(
-                     "DELETE FROM contributions WHERE crop_id=?")) {
-            for (String cropId : managedCropIds) {
-                progress.setString(1, cropId);
-                progress.addBatch();
-                contributions.setString(1, cropId);
-                contributions.addBatch();
-            }
-            progress.executeBatch();
-            contributions.executeBatch();
-        }
-        insertSnapshot(snapshot);
-    }
-
-    private void insertSnapshot(ProgressSnapshot snapshot) throws SQLException {
-        try (PreparedStatement progress = connection.prepareStatement("""
-                 INSERT INTO crop_progress(crop_id, amount, completed) VALUES (?, ?, ?)
-                 """);
-             PreparedStatement contribution = connection.prepareStatement("""
-                 INSERT INTO contributions(player_uuid, crop_id, amount) VALUES (?, ?, ?)
-                 """)) {
+                keepHigher ? INSERT_PROGRESS + KEEP_HIGHER_PROGRESS : INSERT_PROGRESS);
+             PreparedStatement contribution = connection.prepareStatement(
+                     keepHigher ? INSERT_CONTRIBUTION + KEEP_HIGHER_CONTRIBUTION : INSERT_CONTRIBUTION)) {
             for (Map.Entry<String, Long> entry : snapshot.totals().entrySet()) {
                 progress.setString(1, entry.getKey());
                 progress.setLong(2, entry.getValue());
@@ -307,6 +250,19 @@ public final class ProgressDatabase implements AutoCloseable {
                 }
             }
             contribution.executeBatch();
+        }
+    }
+
+    private void deleteCropRows(Collection<String> cropIds, String... tables) throws SQLException {
+        for (String table : tables) {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "DELETE FROM " + table + " WHERE crop_id=?")) {
+                for (String cropId : cropIds) {
+                    statement.setString(1, cropId);
+                    statement.addBatch();
+                }
+                statement.executeBatch();
+            }
         }
     }
 
@@ -316,12 +272,22 @@ public final class ProgressDatabase implements AutoCloseable {
         try {
             operation.run();
             connection.commit();
-        } catch (SQLException exception) {
-            connection.rollback();
-            throw exception;
+        } catch (Throwable failure) {
+            // Roll back on any failure: restoring auto-commit below would otherwise commit a partial write.
+            try {
+                connection.rollback();
+            } catch (SQLException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+            throw failure;
         } finally {
             connection.setAutoCommit(oldAutoCommit);
         }
+    }
+
+    /** Test hook: runs work inside the same transaction wrapper the save paths use. */
+    synchronized void inTransaction(SqlWork work) throws SQLException {
+        transaction(() -> work.run(connection));
     }
 
     public synchronized void resetAll() throws SQLException {
@@ -336,16 +302,7 @@ public final class ProgressDatabase implements AutoCloseable {
     }
 
     public synchronized void resetCrop(String cropId) throws SQLException {
-        transaction(() -> {
-            try (PreparedStatement progress = connection.prepareStatement("DELETE FROM crop_progress WHERE crop_id=?");
-                 PreparedStatement contributions = connection.prepareStatement("DELETE FROM contributions WHERE crop_id=?");
-                 PreparedStatement pending = connection.prepareStatement("DELETE FROM pending_celebrations WHERE crop_id=?")) {
-                for (PreparedStatement statement : new PreparedStatement[]{progress, contributions, pending}) {
-                    statement.setString(1, cropId);
-                    statement.executeUpdate();
-                }
-            }
-        });
+        transaction(() -> deleteCropRows(List.of(cropId), "crop_progress", "contributions", "pending_celebrations"));
     }
 
     public synchronized List<PendingCelebration> pendingCelebrations(UUID player) throws SQLException {
@@ -396,6 +353,11 @@ public final class ProgressDatabase implements AutoCloseable {
     @FunctionalInterface
     private interface SqlOperation {
         void run() throws SQLException;
+    }
+
+    @FunctionalInterface
+    interface SqlWork {
+        void run(Connection connection) throws SQLException;
     }
 
     public record PendingCelebration(String cropId, boolean grandFinale) {
