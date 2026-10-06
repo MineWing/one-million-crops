@@ -3,10 +3,16 @@ package com.onemillioncrops.service;
 import org.bukkit.Chunk;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 
 /** Stores player-placed crop source coordinates in the owning chunk's persistent data. */
 public final class PlacedSourceTracker {
@@ -56,6 +62,36 @@ public final class PlacedSourceTracker {
             chunk.getPersistentDataContainer().set(positionsKey, PersistentDataType.INTEGER_ARRAY, reduced);
         }
         return true;
+    }
+
+    /**
+     * Carries the markers of blocks that all move one step in {@code direction} at once,
+     * such as a piston push. Each block resolves its own chunk, so moves across a chunk
+     * border keep their marker.
+     *
+     * @return the destinations that are now marked
+     */
+    public List<Block> move(Collection<Block> blocks, BlockFace direction) {
+        List<Block> destinations = relocate(blocks, this::consume, block -> block.getRelative(direction));
+        destinations.forEach(this::mark);
+        return destinations;
+    }
+
+    /**
+     * Consumes every tracked source before anything is marked, so that in a chain of pushed
+     * blocks a marker that has just arrived is never consumed by the block moving out of
+     * that position.
+     *
+     * @return the destinations of the sources that were tracked, still to be marked
+     */
+    static <T> List<T> relocate(Collection<T> sources, Predicate<T> consume, UnaryOperator<T> destination) {
+        List<T> destinations = new ArrayList<>();
+        for (T source : sources) {
+            if (consume.test(source)) {
+                destinations.add(destination.apply(source));
+            }
+        }
+        return destinations;
     }
 
     private int[] positions(Chunk chunk) {

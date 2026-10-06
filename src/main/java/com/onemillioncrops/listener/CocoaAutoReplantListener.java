@@ -79,10 +79,8 @@ public final class CocoaAutoReplantListener implements Listener {
         }
         creditHarvestedBeans(event.getDrops());
 
-        Cocoa seed = (Cocoa) cocoa.clone();
-        seed.setAge(0);
         BlockPosition source = BlockPosition.of(pod);
-        ReplantPlan plan = new ReplantPlan(source, source, seed);
+        ReplantPlan plan = new ReplantPlan(source, source, seedling(cocoa));
         Bukkit.getScheduler().runTask(plugin,
                 () -> replant(plan, WATER_REPLANT_ATTEMPTS, WATER_RETRY_TICKS));
     }
@@ -100,10 +98,7 @@ public final class CocoaAutoReplantListener implements Listener {
         if (crop == null) {
             return;
         }
-        int amount = takeBeans(drops);
-        if (amount > 0) {
-            plugin.recordAutomatedPickup(crop, amount);
-        }
+        AutomatedDrops.credit(drops, Material.COCOA_BEANS, amount -> plugin.recordAutomatedPickup(crop, amount));
     }
 
     private void prepare(List<Block> movedBlocks, BlockFace movement) {
@@ -118,17 +113,13 @@ public final class CocoaAutoReplantListener implements Listener {
                     continue;
                 }
 
-                BlockPosition source = BlockPosition.of(pod);
-                prepare(pod, source.relative(movement), cocoa);
+                prepare(BlockPosition.of(pod), movement, cocoa);
             }
         }
     }
 
-    private void prepare(Block pod, BlockPosition target, Cocoa cocoa) {
-        Cocoa seed = (Cocoa) cocoa.clone();
-        seed.setAge(0);
-        BlockPosition source = BlockPosition.of(pod);
-        ReplantPlan plan = new ReplantPlan(source, target, seed);
+    private void prepare(BlockPosition source, BlockFace movement, Cocoa cocoa) {
+        ReplantPlan plan = new ReplantPlan(source, source.relative(movement), seedling(cocoa));
         pending.put(source, plan);
         Bukkit.getScheduler().runTaskLater(plugin,
                 () -> pending.remove(source, plan), PENDING_DROP_TICKS);
@@ -189,6 +180,12 @@ public final class CocoaAutoReplantListener implements Listener {
         return true;
     }
 
+    private static Cocoa seedling(Cocoa grown) {
+        Cocoa seed = (Cocoa) grown.clone();
+        seed.setAge(0);
+        return seed;
+    }
+
     static BlockFace pistonMovement(BlockFace pistonDirection, boolean extending) {
         return extending ? pistonDirection : pistonDirection.getOppositeFace();
     }
@@ -224,19 +221,6 @@ public final class CocoaAutoReplantListener implements Listener {
             return true;
         }
         return false;
-    }
-
-    static int takeBeans(List<ItemStack> drops) {
-        int total = 0;
-        Iterator<ItemStack> iterator = drops.iterator();
-        while (iterator.hasNext()) {
-            ItemStack stack = iterator.next();
-            if (stack.getType() == Material.COCOA_BEANS) {
-                total += stack.getAmount();
-                iterator.remove();
-            }
-        }
-        return total;
     }
 
     static boolean isAttachedToSupport(BlockFace cocoaFacing, BlockFace sideFromSupport) {
