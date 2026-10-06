@@ -19,6 +19,7 @@ import com.onemillioncrops.service.HarvestSummaryService;
 import com.onemillioncrops.service.ProgressService;
 import com.onemillioncrops.service.ScoreboardService;
 import com.onemillioncrops.service.SummaryActionService;
+import com.onemillioncrops.util.StartupBanner;
 import com.onemillioncrops.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
@@ -99,8 +100,14 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         harvestSummary.start();
         startAutosave();
 
-        getLogger().info("OneMillionCrops enabled with " + configManager.crops().size() +
-                " crops and a target of " + Text.number(progress.target()) + " each.");
+        printStartupBanner();
+    }
+
+    private void printStartupBanner() {
+        for (String line : StartupBanner.lines(getPluginMeta().getVersion(), configManager.crops().size(),
+                progress.completedCount(), progress.target())) {
+            getServer().getConsoleSender().sendMessage(text.parse(line));
+        }
     }
 
     private ProgressService createProgress(ProgressSnapshot snapshot) {
