@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class MessagesConfigurationTest {
     private static final Pattern LEGACY_PLACEHOLDER = Pattern.compile(
-            "<(?:crop|file|completed|total|amount|target|percent|time|players|player|minutes|url|entries|pitch)>"
+            "<(?:crop|file|completed|total|amount|target|percent|time|players|player|minutes|entries|pitch)>"
     );
 
     @Test

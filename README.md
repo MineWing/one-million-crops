@@ -15,8 +15,7 @@
   <a href="https://minewing.github.io/one-million-crops/">Documentation</a> ·
   <a href="https://github.com/MineWing/one-million-crops/releases/latest">Download</a> ·
   <a href="#commands">Commands</a> ·
-  <a href="#placeholderapi">Placeholders</a> ·
-  <a href="#live-web-dashboard">Web dashboard</a>
+  <a href="#placeholderapi">Placeholders</a>
 </p>
 
 OneMillionCrops is a server-wide Paper challenge where everyone contributes toward collecting a configurable target—one million by default—of every enabled crop. Progress is persistent, celebrations are shared, and careful provenance tracking keeps automated farms useful without allowing the same stack to be counted repeatedly.
@@ -28,7 +27,6 @@ OneMillionCrops is a server-wide Paper challenge where everyone contributes towa
 | **One set of totals** | Every participant contributes to the same crop objectives and combined goal |
 | **Accurate counting** | Tracks crop provenance through water, pistons, hoppers, storage, partial pickups, and player drops |
 | **Live progress** | Animated `/progress` GUI, rotating scoreboard, action bars, milestones, and completion sequences |
-| **Web dashboard** | Responsive dashboard with live totals, velocity, objectives, contributors, online players, and recent pickups |
 | **Farm tools** | Storage crop wand and a protected two-point farmland and nether wart planting wand |
 | **Safe persistence** | SQLite transactions, autosaves, per-player contributions, and automatic pre-reset backups |
 | **Flexible presentation** | MiniMessage action lists for broadcasts, sounds, particles, titles, boss bars, and fireworks |
@@ -62,7 +60,6 @@ At configurable intervals, the plugin broadcasts a ranked harvest summary and sh
 | `/progress [crop]` | Open the animated progress GUI | `onemillion.progress` |
 | `/1mill status` | Print every crop total | `onemillion.progress` |
 | `/1mill scoreboard` | Toggle the live sidebar | `onemillion.progress` |
-| `/1mill web` | Show the configured dashboard address | `onemillion.progress` |
 | `/1mill wand` | Receive the crop storage wand | `onemillion.wand` |
 | `/1mill plantwand` | Receive the two-point farmland and nether wart planting wand | `onemillion.plantwand` |
 | `/1mill crops` | Open the crop enable/disable GUI | `onemillion.admin` |
@@ -95,7 +92,7 @@ The plugin creates `config.yml`, `crops.yml`, `messages.yml`, `progress.db`, and
 
 | File | Responsibility |
 |---|---|
-| `config.yml` | Target, participants, counting rules, scoreboard, web server, autosaves, and celebrations |
+| `config.yml` | Target, participants, counting rules, scoreboard, autosaves, and celebrations |
 | `crops.yml` | Enabled crops, item materials, harvest source blocks, and MiniMessage display names |
 | `messages.yml` | Ordered action lists plus configurable GUI and wand lore lists |
 | `progress.db` | Shared totals, contributions, completion state, and queued celebrations |
@@ -122,31 +119,15 @@ PlaceholderAPI is optional and requires no separate eCloud expansion. Common val
 
 Numeric placeholders also have `_formatted` variants with thousands separators. Replace `<crop>` with an ID from `crops.yml`, such as `wheat` or `nether_wart`.
 
-## Live web dashboard
-
-The same plugin JAR serves a responsive, read-only React dashboard. Updates arrive over Server-Sent Events without refreshing the page.
-
-| Endpoint | Purpose |
-|---|---|
-| `/` | Dashboard application |
-| `/api/v1/progress` | Current immutable JSON snapshot |
-| `/api/v1/events` | Live Server-Sent Events stream |
-| `/health` | Lightweight health check |
-
-The listener defaults to `127.0.0.1:8765`. For public access, keep the localhost binding, place an HTTPS reverse proxy in front of it, and configure `web.public-url`. The dashboard exposes no reset, command, database, or server-control endpoint.
-
 ## Build from source
 
 ```bash
 git clone https://github.com/MineWing/one-million-crops.git
 cd one-million-crops
-cd web && npm ci && npm run build && cd ..
 mvn package
 ```
 
-Node.js 22+ is only required when changing the React frontend. The compiled dashboard is checked into `src/main/resources/web`, so a Java-only `mvn package` includes the latest committed web assets.
-
-The test suite covers target clamping, milestone transitions, contribution tracking, resets, storage wands, planting, database transactions, placeholder values, action parsing, and JSON safety.
+The test suite covers target clamping, milestone transitions, contribution tracking, resets, storage wands, planting, database transactions, placeholder values, and action parsing.
 
 ---
 

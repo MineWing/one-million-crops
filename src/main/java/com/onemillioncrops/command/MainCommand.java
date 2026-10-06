@@ -33,69 +33,37 @@ public final class MainCommand implements CommandExecutor, TabCompleter {
         }
         String subcommand = args[0].toLowerCase(Locale.ROOT);
         if (subcommand.equals("status")) {
-            if (!sender.hasPermission("onemillion.progress")) {
-                plugin.sendActions("no-permission", sender, Map.of());
-                return true;
+            if (permitted(sender, "onemillion.progress")) {
+                status(sender);
             }
-            status(sender);
             return true;
         }
         if (subcommand.equals("scoreboard")) {
-            if (!sender.hasPermission("onemillion.progress")) {
-                plugin.sendActions("no-permission", sender, Map.of());
-                return true;
-            }
-            if (!(sender instanceof Player player)) {
-                plugin.sendActions("player-only", sender, Map.of());
-            } else {
+            if (permitted(sender, "onemillion.progress") && requirePlayer(sender) instanceof Player player) {
                 boolean enabled = plugin.scoreboards().toggle(player);
                 plugin.sendActions(enabled ? "scoreboard-on" : "scoreboard-off", sender, Map.of());
             }
             return true;
         }
-        if (subcommand.equals("web")) {
-            if (!sender.hasPermission("onemillion.progress")) {
-                plugin.sendActions("no-permission", sender, Map.of());
-                return true;
-            }
-            if (plugin.dashboard().isRunning()) {
-                plugin.sendActions("web-running", sender,
-                        Map.of("url", Text.escape(plugin.dashboard().publicUrl())));
-            } else {
-                plugin.sendActions("web-disabled", sender, Map.of());
-            }
-            return true;
-        }
         if (subcommand.equals("wand")) {
-            if (!sender.hasPermission("onemillion.wand")) {
-                plugin.sendActions("no-permission", sender, Map.of());
-            } else if (sender instanceof Player player) {
+            if (permitted(sender, "onemillion.wand") && requirePlayer(sender) instanceof Player player) {
                 plugin.cropWand().giveWand(player);
-            } else {
-                plugin.sendActions("player-only", sender, Map.of());
             }
             return true;
         }
         if (subcommand.equals("plantwand")) {
-            if (!sender.hasPermission("onemillion.plantwand")) {
-                plugin.sendActions("no-permission", sender, Map.of());
-            } else if (sender instanceof Player player) {
+            if (permitted(sender, "onemillion.plantwand") && requirePlayer(sender) instanceof Player player) {
                 plugin.plantWand().giveWand(player);
-            } else {
-                plugin.sendActions("player-only", sender, Map.of());
             }
             return true;
         }
-        if (!sender.hasPermission("onemillion.admin")) {
-            plugin.sendActions("no-permission", sender, Map.of());
+        if (!permitted(sender, "onemillion.admin")) {
             return true;
         }
         switch (subcommand) {
             case "crops" -> {
-                if (sender instanceof Player player) {
+                if (requirePlayer(sender) instanceof Player player) {
                     plugin.gui().openCropToggles(player, 0);
-                } else {
-                    plugin.sendActions("player-only", sender, Map.of());
                 }
             }
             case "reload" -> plugin.reloadPlugin(sender);
@@ -106,6 +74,22 @@ public final class MainCommand implements CommandExecutor, TabCompleter {
             default -> help(sender);
         }
         return true;
+    }
+
+    private boolean permitted(CommandSender sender, String permission) {
+        if (sender.hasPermission(permission)) {
+            return true;
+        }
+        plugin.sendActions("no-permission", sender, Map.of());
+        return false;
+    }
+
+    private @Nullable Player requirePlayer(CommandSender sender) {
+        if (sender instanceof Player player) {
+            return player;
+        }
+        plugin.sendActions("player-only", sender, Map.of());
+        return null;
     }
 
     private void summary(CommandSender sender, String[] args) {
@@ -180,7 +164,7 @@ public final class MainCommand implements CommandExecutor, TabCompleter {
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                                  @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            List<String> options = new ArrayList<>(List.of("help", "status", "scoreboard", "web"));
+            List<String> options = new ArrayList<>(List.of("help", "status", "scoreboard"));
             if (sender.hasPermission("onemillion.wand")) {
                 options.add("wand");
             }

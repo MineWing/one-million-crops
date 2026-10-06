@@ -19,7 +19,6 @@ import com.onemillioncrops.service.HarvestSummaryService;
 import com.onemillioncrops.service.ProgressService;
 import com.onemillioncrops.service.ScoreboardService;
 import com.onemillioncrops.service.SummaryActionService;
-import com.onemillioncrops.web.WebDashboardService;
 import com.onemillioncrops.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
@@ -50,7 +49,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
     private HarvestSummaryService harvestSummary;
     private SummaryActionService actions;
     private CelebrationService celebrations;
-    private WebDashboardService dashboard;
     private CropWandListener cropWand;
     private PlantWandListener plantWand;
     private BukkitTask autosaveTask;
@@ -86,7 +84,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         harvestActionBar = new HarvestActionBarService(this);
         harvestSummary = new HarvestSummaryService(this);
         celebrations = new CelebrationService(this);
-        dashboard = new WebDashboardService(this);
 
         getServer().getPluginManager().registerEvents(new CocoaAutoReplantListener(this), this);
         getServer().getPluginManager().registerEvents(new CropPickupListener(this), this);
@@ -101,7 +98,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         gui.start();
         harvestSummary.start();
         startAutosave();
-        dashboard.start();
 
         getLogger().info("OneMillionCrops enabled with " + configManager.crops().size() +
                 " crops and a target of " + Text.number(progress.target()) + " each.");
@@ -137,7 +133,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         if (result.added() <= 0) {
             return 0;
         }
-        dashboard.recordPickup(player, crop, result.added());
         harvestActionBar.record(player, crop, result.added());
         harvestSummary.record(player, result.added());
         if (configManager.settings().guiPickupSound()) {
@@ -155,7 +150,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         if (result.added() <= 0) {
             return;
         }
-        dashboard.recordAutomatedPickup(crop, result.added());
         finishProgressUpdate(crop, result);
     }
 
@@ -208,7 +202,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                     gui.start();
                     harvestSummary.start();
                     startAutosave();
-                    dashboard.restart();
                     endOperation();
                     sendActions("reloaded", sender, Map.of());
                 });
@@ -254,7 +247,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                     endOperation();
                     scoreboards.updateAll();
                     gui.refreshOpen();
-                    dashboard.refreshNow();
                     sendActions(enable ? "crop-enabled" : "crop-disabled", player,
                             Map.of("crop", crop.displayMiniMessage()));
                 });
@@ -360,7 +352,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                     endOperation();
                     scoreboards.updateAll();
                     gui.refreshOpen();
-                    dashboard.recordReset(crop);
                 });
             } catch (SQLException | IOException exception) {
                 getLogger().log(Level.SEVERE, "Could not reset progress", exception);
@@ -490,7 +481,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         visualRefreshTask = Bukkit.getScheduler().runTaskLater(this, () -> {
             visualRefreshTask = null;
             gui.refreshOpen();
-            dashboard.refreshNow();
         }, 1L);
     }
 
@@ -513,9 +503,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         }
         if (harvestSummary != null) {
             harvestSummary.stop();
-        }
-        if (dashboard != null) {
-            dashboard.stop();
         }
         if (visualRefreshTask != null) {
             visualRefreshTask.cancel();
@@ -568,10 +555,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
 
     public CelebrationService celebrations() {
         return celebrations;
-    }
-
-    public WebDashboardService dashboard() {
-        return dashboard;
     }
 
     public CropWandListener cropWand() {

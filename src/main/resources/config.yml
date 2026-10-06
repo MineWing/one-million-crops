@@ -30,20 +30,6 @@ storage:
   autosave-seconds: 5
   backup-before-reset: true
 
-web:
-  # The live dashboard is read-only. Keep localhost for use behind a reverse
-  # proxy, or change to 0.0.0.0 to expose it directly on your LAN/server.
-  enabled: true
-  bind-address: 0.0.0.0
-  port: 8765
-  # Optional externally reachable address shown by /1mill web.
-  # Example: https://crops.example.com
-  public-url: ''
-  refresh-ticks: 20
-  history:
-    sample-seconds: 30
-    retention-hours: 24
-
 scoreboard:
   enabled-by-default: true
   # Title animation speed. 1 tick renders the rainbow at 20 frames per second.

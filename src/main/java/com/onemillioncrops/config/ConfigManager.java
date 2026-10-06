@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -85,15 +86,6 @@ public final class ConfigManager {
         if (!dataFolder.resolve(databaseFile).normalize().startsWith(dataFolder)) {
             throw new IllegalArgumentException("storage.database-file must remain inside the plugin folder");
         }
-        String webBindAddress = config.getString("web.bind-address", "127.0.0.1");
-        if (webBindAddress == null || webBindAddress.isBlank()) {
-            plugin.getLogger().warning("web.bind-address is blank; using 127.0.0.1.");
-            webBindAddress = "127.0.0.1";
-        }
-        String webPublicUrl = config.getString("web.public-url", "");
-        if (webPublicUrl == null) {
-            webPublicUrl = "";
-        }
         String completionSound = config.getString(
                 "celebration.completion-sound", "UI_TOAST_CHALLENGE_COMPLETE");
         if (completionSound == null || completionSound.isBlank()) {
@@ -110,13 +102,6 @@ public final class ConfigManager {
                 Math.max(1, config.getInt("storage.autosave-seconds", 5)),
                 databaseFile,
                 config.getBoolean("storage.backup-before-reset", true),
-                config.getBoolean("web.enabled", true),
-                webBindAddress,
-                Math.clamp(config.getInt("web.port", 8765), 1, 65_535),
-                webPublicUrl.strip(),
-                Math.clamp(config.getInt("web.refresh-ticks", 20), 1, 1_200),
-                Math.clamp(config.getInt("web.history.sample-seconds", 30), 5, 3_600),
-                Math.clamp(config.getInt("web.history.retention-hours", 24), 1, 720),
                 config.getBoolean("scoreboard.enabled-by-default", true),
                 Math.clamp(config.getInt("scoreboard.animation-ticks", 2), 1, 20),
                 Math.max(1, config.getInt("scoreboard.refresh-ticks", 10)),
@@ -380,7 +365,7 @@ public final class ConfigManager {
     private static String percentPlaceholders(String input) {
         String result = input;
         for (String placeholder : List.of("crop", "file", "completed", "total", "amount", "target",
-                "percent", "time", "players", "player", "minutes", "url", "entries", "pitch",
+                "percent", "time", "players", "player", "minutes", "entries", "pitch",
                 "sound", "volume", "fireworks", "firework-gap", "amount-display")) {
             result = result.replace("<" + placeholder + ">", "%" + placeholder + "%");
         }
@@ -476,16 +461,7 @@ public final class ConfigManager {
             throw new IllegalArgumentException("Unknown configured crop: " + cropId);
         }
         yaml.set("crops." + normalised + ".enabled", enabled);
-
-        Path destination = cropsFile.toPath();
-        Path temporary = Files.createTempFile(destination.getParent(), "crops-", ".yml.tmp");
-        Files.writeString(temporary, yaml.saveToString(), StandardCharsets.UTF_8);
-        try {
-            Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE);
-        } catch (java.nio.file.AtomicMoveNotSupportedException exception) {
-            Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING);
-        }
+        saveAtomically(yaml, cropsFile);
         return read();
     }
 
@@ -493,17 +469,22 @@ public final class ConfigManager {
         File configFile = new File(plugin.getDataFolder(), "config.yml");
         YamlConfiguration yaml = YamlConfiguration.loadConfiguration(configFile);
         yaml.set("counting.allow-automated-farms", enabled);
+        saveAtomically(yaml, configFile);
+        return read();
+    }
 
-        Path destination = configFile.toPath();
-        Path temporary = Files.createTempFile(destination.getParent(), "config-", ".yml.tmp");
+    private static void saveAtomically(YamlConfiguration yaml, File file) throws IOException {
+        Path destination = file.toPath();
+        String name = file.getName();
+        String prefix = name.substring(0, name.lastIndexOf('.')) + "-";
+        Path temporary = Files.createTempFile(destination.getParent(), prefix, ".yml.tmp");
         Files.writeString(temporary, yaml.saveToString(), StandardCharsets.UTF_8);
         try {
             Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING,
                     StandardCopyOption.ATOMIC_MOVE);
-        } catch (java.nio.file.AtomicMoveNotSupportedException exception) {
+        } catch (AtomicMoveNotSupportedException exception) {
             Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING);
         }
-        return read();
     }
 
     private Material parseMaterial(String name, String path) {

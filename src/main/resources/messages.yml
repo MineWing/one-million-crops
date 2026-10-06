@@ -168,14 +168,6 @@ operation-running:
   enabled: true
   actions:
     - '[message] %prefix% <white>Another database operation is already running.</white>'
-web-running:
-  enabled: true
-  actions:
-    - '[message] %prefix% <white>Live dashboard <dark_gray>•</dark_gray> <#8CE99A><click:open_url:''%url%''><hover:show_text:''<white>Open dashboard</white>''>%url%</hover></click></#8CE99A></white>'
-web-disabled:
-  enabled: true
-  actions:
-    - '[message] %prefix% <white>The live dashboard is disabled or unavailable.</white>'
 help:
   enabled: true
   actions:
@@ -183,7 +175,6 @@ help:
     - '[message] <#8CE99A>/progress [crop]</#8CE99A> <dark_gray>—</dark_gray> <white>open challenge progress</white>'
     - '[message] <#8CE99A>/1m status</#8CE99A> <dark_gray>—</dark_gray> <white>show every crop total</white>'
     - '[message] <#8CE99A>/1m scoreboard</#8CE99A> <dark_gray>—</dark_gray> <white>toggle the live sidebar</white>'
-    - '[message] <#8CE99A>/1m web</#8CE99A> <dark_gray>—</dark_gray> <white>open the live dashboard</white>'
     - '[message] <#8CE99A>/1m wand</#8CE99A> <dark_gray>—</dark_gray> <white>receive a crop storage wand</white>'
     - '[message] <#8CE99A>/1m plantwand</#8CE99A> <dark_gray>—</dark_gray> <white>select farmland or soul sand and plant it from a crop menu</white>'
 crop-wand-received:
