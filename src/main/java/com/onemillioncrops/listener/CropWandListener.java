@@ -31,14 +31,12 @@ import java.util.Map;
 public final class CropWandListener implements Listener {
     private final OneMillionCropsPlugin plugin;
     private final NamespacedKey wandKey;
-    private final NamespacedKey eligibleCropKey;
-    private final NamespacedKey blockedKey;
+    private final CropMarkers markers;
 
     public CropWandListener(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
         this.wandKey = new NamespacedKey(plugin, "crop_wand");
-        this.eligibleCropKey = new NamespacedKey(plugin, "eligible_crop");
-        this.blockedKey = new NamespacedKey(plugin, "blocked_pickup");
+        this.markers = new CropMarkers(plugin);
     }
 
     public void giveWand(Player player) {
@@ -97,7 +95,7 @@ public final class CropWandListener implements Listener {
 
     private boolean isWand(ItemStack item) {
         return item != null && item.getType() == Material.BLAZE_ROD
-                && item.getItemMeta().getPersistentDataContainer().has(wandKey, PersistentDataType.BYTE);
+                && item.getPersistentDataContainer().has(wandKey, PersistentDataType.BYTE);
     }
 
     private boolean isSupportedContainer(BlockState state) {
@@ -189,12 +187,7 @@ public final class CropWandListener implements Listener {
     }
 
     private CropDefinition eligibleCrop(ItemStack stack) {
-        ItemMeta meta = stack.getItemMeta();
-        if (meta.getPersistentDataContainer().has(blockedKey, PersistentDataType.BYTE)) {
-            return null;
-        }
-        String cropId = meta.getPersistentDataContainer().get(eligibleCropKey, PersistentDataType.STRING);
-        CropDefinition crop = plugin.configManager().crop(cropId);
+        CropDefinition crop = plugin.configManager().crop(markers.read(stack).creditableCropId());
         return crop != null && crop.item() == stack.getType() ? crop : null;
     }
 

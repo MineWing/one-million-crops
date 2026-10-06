@@ -142,15 +142,16 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         return result.added();
     }
 
-    public void recordAutomatedPickup(CropDefinition crop, int amount) {
+    public long recordAutomatedPickup(CropDefinition crop, int amount) {
         if (maintenance) {
-            return;
+            return 0;
         }
         ProgressService.IncrementResult result = addProgress(null, crop, amount);
         if (result.added() <= 0) {
-            return;
+            return 0;
         }
         finishProgressUpdate(crop, result);
+        return result.added();
     }
 
     private ProgressService.IncrementResult addProgress(java.util.UUID player, CropDefinition crop, int amount) {
