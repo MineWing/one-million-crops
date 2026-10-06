@@ -48,6 +48,10 @@ public final class ScoreboardService {
         titleFrames = plugin.text().compileAnimatedGradientFrames(
                 plugin.configManager().settings().scoreboardTitleFrames(),
                 plugin.configManager().settings().scoreboardTitleAnimationFrames());
+        if (!plugin.configManager().settings().scoreboardEnabled()) {
+            restorePreviousBoards();
+            return;
+        }
         int period = plugin.configManager().settings().scoreboardAnimationTicks();
         animationTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> animate(period), 1L, period);
         for (Player player : Bukkit.getOnlinePlayers()) {
@@ -211,8 +215,9 @@ public final class ScoreboardService {
         return "§" + Integer.toHexString(index & 15);
     }
 
-    private static String compact(long amount) {
-        if (amount >= 1_000_000) {
+    static String compact(long amount) {
+        // Switch units where rounding would otherwise print "1000.0k".
+        if (amount >= 999_950) {
             return String.format(Locale.US, "%.2fM", amount / 1_000_000.0);
         }
         if (amount >= 1_000) {
@@ -228,6 +233,10 @@ public final class ScoreboardService {
 
     public void stop() {
         stopTask();
+        restorePreviousBoards();
+    }
+
+    private void restorePreviousBoards() {
         for (Player player : Bukkit.getOnlinePlayers()) {
             Scoreboard old = previous.get(player.getUniqueId());
             if (old != null) {

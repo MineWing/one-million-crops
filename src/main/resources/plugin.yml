@@ -1,5 +1,5 @@
 name: OneMillionCrops
-version: '1.0.20'
+version: '1.0.21'
 main: com.onemillioncrops.OneMillionCropsPlugin
 api-version: '1.21.11'
 authors: [Alex]

@@ -142,7 +142,7 @@ public final class GuiService {
     public void handleClick(Player player, int rawSlot, ProgressGuiHolder holder) {
         if (rawSlot == PREVIOUS_SLOT && holder.page() > 0) {
             open(player, holder.page() - 1);
-        } else if (rawSlot == NEXT_SLOT) {
+        } else if (rawSlot == NEXT_SLOT && hasNextPage(holder.page(), plugin.progress().crops().size())) {
             open(player, holder.page() + 1);
         } else if (rawSlot == CLOSE_SLOT) {
             player.closeInventory();
@@ -155,7 +155,9 @@ public final class GuiService {
             return;
         }
         if (rawSlot == NEXT_SLOT) {
-            openCropToggles(player, holder.page() + 1);
+            if (hasNextPage(holder.page(), plugin.configManager().configuredCrops().size())) {
+                openCropToggles(player, holder.page() + 1);
+            }
             return;
         }
         if (rawSlot == CLOSE_SLOT) {
@@ -197,6 +199,10 @@ public final class GuiService {
         animateBorder(inventory);
         player.openInventory(inventory);
         player.playSound(player.getLocation(), Sound.BLOCK_ENDER_CHEST_OPEN, 0.6f, 1.4f);
+    }
+
+    static boolean hasNextPage(int page, int crops) {
+        return page + 1 < pageCount(crops);
     }
 
     private static int pageCount(int crops) {
