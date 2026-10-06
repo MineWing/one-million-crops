@@ -3,7 +3,6 @@ package com.onemillioncrops.util;
 import com.onemillioncrops.config.ConfigManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
-import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 
 import java.text.NumberFormat;
 import java.util.ArrayList;
@@ -21,11 +20,6 @@ public final class Text {
     private static final Pattern ARGUMENT_SEPARATOR = Pattern.compile(":");
     private static final MiniMessage MINI = MiniMessage.miniMessage();
     private static final Map<String, AnimatedGradient> ANIMATED_GRADIENTS = new ConcurrentHashMap<>();
-    private static final LegacyComponentSerializer LEGACY = LegacyComponentSerializer.builder()
-            .character('§')
-            .hexColors()
-            .useUnusualXRepeatedCharacterHexFormat()
-            .build();
     private static final ThreadLocal<NumberFormat> NUMBER = ThreadLocal.withInitial(
             () -> NumberFormat.getIntegerInstance(Locale.US));
 
@@ -62,10 +56,6 @@ public final class Text {
 
     public Component rawMessage(String key, Map<String, String> replacements) {
         return parse(replace(config.message(key), replacements));
-    }
-
-    public String legacy(String miniMessage) {
-        return LEGACY.serialize(parse(miniMessage));
     }
 
     public static String replace(String input, Map<String, String> replacements) {

@@ -1,6 +1,7 @@
 package com.onemillioncrops.placeholder;
 
 import com.onemillioncrops.service.ProgressService;
+import com.onemillioncrops.util.Numbers;
 import com.onemillioncrops.util.Text;
 
 import java.util.Comparator;
@@ -14,7 +15,7 @@ public final class PlaceholderValues {
     public static String resolve(ProgressService progress, UUID playerId, String params) {
         String key = params.toLowerCase(Locale.ROOT);
         long total = total(progress);
-        long goal = saturatingMultiply(progress.target(), progress.crops().size());
+        long goal = Numbers.saturatingMultiply(progress.target(), progress.crops().size());
 
         return switch (key) {
             case "total" -> Long.toString(total);
@@ -73,7 +74,7 @@ public final class PlaceholderValues {
     private static long total(ProgressService progress) {
         long total = 0L;
         for (String cropId : progress.crops().keySet()) {
-            total = saturatingAdd(total, progress.amount(cropId));
+            total = Numbers.saturatingAdd(total, progress.amount(cropId));
         }
         return total;
     }
@@ -84,18 +85,8 @@ public final class PlaceholderValues {
         }
         long total = 0L;
         for (String cropId : progress.crops().keySet()) {
-            total = saturatingAdd(total, progress.contribution(playerId, cropId));
+            total = Numbers.saturatingAdd(total, progress.contribution(playerId, cropId));
         }
         return total;
-    }
-
-    private static long saturatingAdd(long left, long right) {
-        return left > Long.MAX_VALUE - right ? Long.MAX_VALUE : left + right;
-    }
-
-    private static long saturatingMultiply(long value, int multiplier) {
-        return multiplier > 0 && value > Long.MAX_VALUE / multiplier
-                ? Long.MAX_VALUE
-                : value * multiplier;
     }
 }

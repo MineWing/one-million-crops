@@ -11,8 +11,8 @@ import org.bukkit.entity.Player;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public final class ProgressCommand implements CommandExecutor, TabCompleter {
@@ -52,7 +52,7 @@ public final class ProgressCommand implements CommandExecutor, TabCompleter {
         if (args.length != 1) {
             return List.of();
         }
-        String prefix = args[0].toLowerCase(java.util.Locale.ROOT);
+        String prefix = args[0].toLowerCase(Locale.ROOT);
         return plugin.configManager().crops().keySet().stream().filter(id -> id.startsWith(prefix)).toList();
     }
 }
