@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -18,6 +19,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -211,6 +213,72 @@ class ProgressDatabaseTest {
 
         database.resetAll();
         assertTrue(database.harvestPersonalBests().isEmpty());
+    }
+
+    @Test
+    void backupIsAReadableCopyOfTheCurrentProgress() throws Exception {
+        save(snapshot(42, Map.of(PLAYER, Map.of("wheat", 42L))));
+
+        Path backup = database.backup(0);
+
+        assertEquals(temporaryDirectory.resolve("backups"), backup.getParent());
+        ProgressDatabase copy = new ProgressDatabase(temporaryDirectory, Logger.getAnonymousLogger(),
+                "backups/" + backup.getFileName());
+        copy.open();
+        try {
+            ProgressSnapshot loaded = copy.load();
+            assertEquals(Map.of("wheat", 42L), loaded.totals());
+            assertEquals(Map.of("wheat", 42L), loaded.contributions().get(PLAYER));
+        } finally {
+            copy.close();
+        }
+    }
+
+    @Test
+    void backupPrunesToTheNewestMaxBackups() throws Exception {
+        Path backups = Files.createDirectories(temporaryDirectory.resolve("backups"));
+        Files.createFile(backups.resolve("progress-2020-01-01_00-00-00-000.db"));
+        Files.createFile(backups.resolve("progress-2020-01-02_00-00-00-000.db"));
+
+        Path newest = database.backup(2);
+
+        assertEquals(Set.of(newest.getFileName().toString(), "progress-2020-01-02_00-00-00-000.db"),
+                fileNames(backups));
+    }
+
+    @Test
+    void pruneDeletesOnlyOldBackupsMatchingTheExactName() throws Exception {
+        Path backups = Files.createDirectories(temporaryDirectory.resolve("backups"));
+        for (String name : List.of("progress-2024-03-01_10-00-00-000.db", "progress-2024-03-02_10-00-00-000.db",
+                "progress-2024-03-03_10-00-00-000.db", "progress-2024-03-04_10-00-00-000.db",
+                "progress-before-migration.db", "progress-2024-03-01_10-00-00-000.db.bak", "notes.txt")) {
+            Files.createFile(backups.resolve(name));
+        }
+        Files.createDirectory(backups.resolve("progress-2000-01-01_00-00-00-000.db"));
+
+        List<Path> deleted = ProgressDatabase.pruneBackups(backups, 2);
+
+        assertEquals(List.of(backups.resolve("progress-2024-03-02_10-00-00-000.db"),
+                backups.resolve("progress-2024-03-01_10-00-00-000.db")), deleted);
+        assertEquals(Set.of("progress-2024-03-03_10-00-00-000.db", "progress-2024-03-04_10-00-00-000.db",
+                        "progress-before-migration.db", "progress-2024-03-01_10-00-00-000.db.bak", "notes.txt",
+                        "progress-2000-01-01_00-00-00-000.db"),
+                fileNames(backups));
+    }
+
+    @Test
+    void zeroMaxBackupsKeepsEveryBackup() throws Exception {
+        Path backups = Files.createDirectories(temporaryDirectory.resolve("backups"));
+        Files.createFile(backups.resolve("progress-2024-03-01_10-00-00-000.db"));
+
+        assertTrue(ProgressDatabase.pruneBackups(backups, 0).isEmpty());
+        assertTrue(Files.exists(backups.resolve("progress-2024-03-01_10-00-00-000.db")));
+    }
+
+    private static Set<String> fileNames(Path directory) throws Exception {
+        try (var files = Files.list(directory)) {
+            return files.map(path -> path.getFileName().toString()).collect(Collectors.toSet());
+        }
     }
 
     private void save(ProgressSnapshot snapshot) throws Exception {

@@ -296,7 +296,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                 Path path;
                 synchronized (persistenceLock) {
                     flushAllNow(true);
-                    path = database.backup();
+                    path = database.backup(configManager.settings().maxBackups());
                 }
                 completeOperation(sender, "backup-failed", "Could not finish the progress backup", () -> { },
                         () -> sendActions("backup-complete", sender, Map.of("file", path.getFileName().toString())));
@@ -333,7 +333,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                     }
                     database.save(beforeReset);
                     if (configManager.settings().backupBeforeReset()) {
-                        database.backup();
+                        database.backup(configManager.settings().maxBackups());
                     }
                     if (crop == null) {
                         database.resetAll();

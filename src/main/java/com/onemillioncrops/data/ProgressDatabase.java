@@ -6,7 +6,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.LinkOption;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -17,16 +17,23 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 public final class ProgressDatabase implements AutoCloseable {
     private static final DateTimeFormatter BACKUP_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss-SSS");
+    /** Exactly the names backup() writes, so pruning can never touch a file an admin put there. */
+    private static final Pattern BACKUP_NAME =
+            Pattern.compile("progress-\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}-\\d{3}\\.db");
     private static final String INSERT_PROGRESS =
             "INSERT INTO crop_progress(crop_id, amount, completed) VALUES (?, ?, ?)";
     private static final String REPLACE_PROGRESS = """
@@ -330,14 +337,50 @@ public final class ProgressDatabase implements AutoCloseable {
         }
     }
 
-    public synchronized Path backup() throws SQLException, IOException {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("PRAGMA wal_checkpoint(FULL)");
-        }
+    /**
+     * Writes a backup to backups/, then deletes the oldest backups beyond {@code maxBackups} (0 keeps all).
+     * A failed prune is only logged, because the backup itself succeeded.
+     */
+    public synchronized Path backup(int maxBackups) throws SQLException, IOException {
         Path backupDirectory = dataFolder.resolve("backups");
         Files.createDirectories(backupDirectory);
         Path destination = backupDirectory.resolve("progress-" + BACKUP_TIME.format(LocalDateTime.now()) + ".db");
-        return Files.copy(databasePath, destination, StandardCopyOption.COPY_ATTRIBUTES);
+        // VACUUM INTO writes a consistent, compacted copy that includes anything still in the WAL file.
+        try (PreparedStatement statement = connection.prepareStatement("VACUUM INTO ?")) {
+            statement.setString(1, destination.toString());
+            statement.execute();
+        }
+        try {
+            pruneBackups(backupDirectory, maxBackups);
+        } catch (IOException exception) {
+            logger.log(Level.WARNING, "Could not delete old progress backups", exception);
+        }
+        return destination;
+    }
+
+    /**
+     * Deletes all but the newest {@code keep} backups in the folder and returns what it deleted. Only regular
+     * files named exactly like backup() names them are considered; their timestamps sort by name.
+     */
+    static List<Path> pruneBackups(Path backupDirectory, int keep) throws IOException {
+        if (keep <= 0) {
+            return List.of();
+        }
+        List<Path> backups;
+        try (Stream<Path> files = Files.list(backupDirectory)) {
+            backups = files
+                    .filter(path -> BACKUP_NAME.matcher(path.getFileName().toString()).matches())
+                    .filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
+                    .sorted(Comparator.comparing((Path path) -> path.getFileName().toString()).reversed())
+                    .toList();
+        }
+        List<Path> deleted = new ArrayList<>();
+        for (Path old : backups.subList(Math.min(keep, backups.size()), backups.size())) {
+            if (Files.deleteIfExists(old)) {
+                deleted.add(old);
+            }
+        }
+        return deleted;
     }
 
     public Path path() {

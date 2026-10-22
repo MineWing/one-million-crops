@@ -30,6 +30,7 @@ storage:
   autosave-seconds: 5
   backup-before-reset: true
   # Oldest backups beyond this many are deleted after each new backup. 0 keeps every backup.
+  # Only files named like the plugin's own backups (progress-<date>_<time>.db) are ever deleted.
   max-backups: 20
 
 scoreboard:
