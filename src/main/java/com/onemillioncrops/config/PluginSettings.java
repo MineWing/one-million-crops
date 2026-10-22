@@ -28,7 +28,9 @@ public record PluginSettings(
         int fireworkGapTicks,
         String completionSound,
         float completionVolume,
-        float completionPitch
+        float completionPitch,
+        int maxBackups,
+        boolean preventBerryBushDamage
 ) {
     public enum ParticipantMode {
         EVERYONE,
@@ -41,7 +43,15 @@ public record PluginSettings(
                 scoreboardAnimationTicks, scoreboardRefreshTicks, scoreboardPageTicks, scoreboardCropsPerPage,
                 scoreboardTitleAnimationFrames, scoreboardTitleFrames, guiAnimationTicks, guiPickupSound,
                 milestones, celebrationFireworks, fireworkGapTicks, completionSound, completionVolume,
-                completionPitch);
+                completionPitch, maxBackups, preventBerryBushDamage);
+    }
+
+    /**
+     * Farms credit the shared total without a player, so they cannot be limited to the allowlist.
+     * In ALLOWLIST mode their drops are left for an allowlisted player to collect instead.
+     */
+    public boolean creditsAutomatedFarms() {
+        return allowAutomatedFarms && participantMode == ParticipantMode.EVERYONE;
     }
 
     public boolean mayContribute(UUID uuid) {

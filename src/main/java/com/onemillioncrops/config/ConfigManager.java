@@ -117,7 +117,9 @@ public final class ConfigManager {
                 Math.max(1, config.getInt("celebration.firework-gap-ticks", 10)),
                 completionSound,
                 (float) Math.clamp(finite(config.getDouble("celebration.completion-volume", 1.0), 1.0), 0.0, 10.0),
-                (float) Math.clamp(finite(config.getDouble("celebration.completion-pitch", 1.0), 1.0), 0.0, 2.0)
+                (float) Math.clamp(finite(config.getDouble("celebration.completion-pitch", 1.0), 1.0), 0.0, 2.0),
+                Math.max(0, config.getInt("storage.max-backups", 20)),
+                config.getBoolean("gameplay.prevent-berry-bush-damage", true)
         );
 
         CropMaps cropMaps = readCrops();

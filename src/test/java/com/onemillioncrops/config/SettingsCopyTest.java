@@ -14,7 +14,7 @@ final class SettingsCopyTest {
     void withAllowAutomatedFarmsReplacesOnlyThatSetting() {
         PluginSettings original = new PluginSettings(1_000_000L, PluginSettings.ParticipantMode.EVERYONE, Set.of(),
                 false, true, true, 5, "progress.db", true, true, 1, 10, 80, 7, 120, List.of("CROPS"),
-                5, false, List.of(25, 50), 3, 10, "UI_TOAST_CHALLENGE_COMPLETE", 1.0f, 1.0f);
+                5, false, List.of(25, 50), 3, 10, "UI_TOAST_CHALLENGE_COMPLETE", 1.0f, 1.0f, 20, true);
         assertFalse(original.allowAutomatedFarms());
 
         PluginSettings updated = original.withAllowAutomatedFarms(true);

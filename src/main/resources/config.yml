@@ -29,6 +29,8 @@ storage:
   database-file: progress.db
   autosave-seconds: 5
   backup-before-reset: true
+  # Oldest backups beyond this many are deleted after each new backup. 0 keeps every backup.
+  max-backups: 20
 
 scoreboard:
   enabled-by-default: true
@@ -42,6 +44,10 @@ scoreboard:
   title-animation-frames: 120
   title-frames:
     - '<b><gradient:#FF4B4B:#FF8B2D:#FFD031:#DCFF39:#6DFF45:#3BFFC7:#58D0FF:#5489FF>CROPS</gradient></b>'
+
+gameplay:
+  # Players walk through sweet berry bushes without damage or slowness, so harvesting is painless.
+  prevent-berry-bush-damage: true
 
 gui:
   animation-ticks: 5
