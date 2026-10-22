@@ -28,9 +28,10 @@ public final class ProgressService {
         this.target = target;
         this.milestones = milestones.stream().filter(value -> value > 0 && value < 100).distinct().sorted().toList();
         for (String cropId : crops.keySet()) {
+            // Keep the stored total as is, even above the target: lowering the target to test and then
+            // raising it again must give back the old total. amount() caps it for display instead.
             long storedAmount = Math.max(0L, loaded.totals().getOrDefault(cropId, 0L));
-            long amount = Math.min(storedAmount, target);
-            totals.put(cropId, amount);
+            totals.put(cropId, storedAmount);
             // Derive this from the total so changing the configured target cannot leave stale completion state.
             completed.put(cropId, storedAmount >= target);
         }
@@ -61,10 +62,10 @@ public final class ProgressService {
             return IncrementResult.NONE;
         }
         long oldAmount = totals.get(cropId);
-        long actual = Math.min(requested, target - oldAmount);
-        if (actual <= 0) {
+        if (oldAmount >= target) {
             return IncrementResult.NONE;
         }
+        long actual = Math.min(requested, target - oldAmount);
         long newAmount = oldAmount + actual;
         totals.put(cropId, newAmount);
         if (player != null) {
@@ -110,8 +111,9 @@ public final class ProgressService {
         dirty = false;
     }
 
+    /** The crop's total capped at the target; the stored total can be higher after the target is lowered. */
     public synchronized long amount(String cropId) {
-        return totals.getOrDefault(cropId, 0L);
+        return Math.min(totals.getOrDefault(cropId, 0L), target);
     }
 
     public synchronized long contribution(UUID player, String cropId) {

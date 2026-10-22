@@ -88,10 +88,53 @@ class ProgressServiceTest {
         assertNull(service.takeDirtySnapshot());
     }
 
+    @Test
+    void loweringTargetCapsDisplayButKeepsStoredTotal() {
+        ProgressService lowered = service(1_000, stored(5_000));
+
+        assertEquals(1_000, lowered.amount("wheat"));
+        assertEquals(1, lowered.completedCount());
+        assertEquals(5_000L, lowered.snapshot().totals().get("wheat"));
+        assertEquals(5_000L, lowered.takeSnapshot().totals().get("wheat"));
+    }
+
+    @Test
+    void addCreditsNothingWhenStoredTotalIsAlreadyPastTarget() {
+        ProgressService lowered = service(1_000, stored(5_000));
+
+        var result = lowered.add(PLAYER, "wheat", 64);
+
+        assertEquals(ProgressService.IncrementResult.NONE, result);
+        assertEquals(5_000L, lowered.snapshot().totals().get("wheat"));
+        assertEquals(0, lowered.contribution(PLAYER, "wheat"));
+        assertFalse(lowered.isDirty());
+    }
+
+    @Test
+    void raisingTargetAgainRestoresTheOldTotal() {
+        ProgressService lowered = service(1_000, stored(5_000));
+        ProgressService raised = service(10_000, lowered.takeSnapshot());
+
+        assertEquals(5_000, raised.amount("wheat"));
+        assertEquals(0, raised.completedCount());
+
+        var result = raised.add(PLAYER, "wheat", 6_000);
+        assertEquals(5_000, result.added());
+        assertTrue(result.completed());
+        assertEquals(10_000, raised.amount("wheat"));
+    }
+
+    private static ProgressSnapshot stored(long wheat) {
+        return new ProgressSnapshot(Map.of("wheat", wheat), Map.of(), Map.of("wheat", true));
+    }
+
     private static ProgressService service(long target) {
+        return service(target, new ProgressSnapshot(Map.of(), Map.of(), Map.of()));
+    }
+
+    private static ProgressService service(long target, ProgressSnapshot loaded) {
         Map<String, CropDefinition> crops = new LinkedHashMap<>();
         crops.put("wheat", new CropDefinition("wheat", Material.WHEAT, Set.of(Material.WHEAT), "Wheat"));
-        return new ProgressService(crops, target, List.of(25, 50, 75, 90),
-                new ProgressSnapshot(Map.of(), Map.of(), Map.of()));
+        return new ProgressService(crops, target, List.of(25, 50, 75, 90), loaded);
     }
 }
