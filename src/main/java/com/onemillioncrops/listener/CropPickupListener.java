@@ -52,6 +52,7 @@ import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -395,9 +396,10 @@ public final class CropPickupListener implements Listener {
         }
     }
 
+    /** The merged item keeps only the target's marker, so it must not change whether either counts. */
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onItemMerge(ItemMergeEvent event) {
-        if (!state(event.getEntity()).equals(state(event.getTarget()))) {
+        if (!mayMerge(markers.effective(event.getEntity()), markers.effective(event.getTarget()))) {
             event.setCancelled(true);
         }
     }
@@ -528,14 +530,6 @@ public final class CropPickupListener implements Listener {
         return sourceMaterials.contains(material);
     }
 
-    private String state(Item item) {
-        Marker marker = markers.effective(item);
-        if (marker.blocked()) {
-            return "blocked";
-        }
-        return marker.eligibleId() == null ? "automatic" : "eligible:" + marker.eligibleId();
-    }
-
     /**
      * The crop an item counts as: the crop its eligible marker names, as long as that crop is
      * still enabled and the item is its crop item. Anything else, unmarked items included,
@@ -553,6 +547,14 @@ public final class CropPickupListener implements Listener {
 
     static boolean destroysBlocks(ExplosionResult result) {
         return result == ExplosionResult.DESTROY || result == ExplosionResult.DESTROY_WITH_DECAY;
+    }
+
+    /**
+     * Blocked and unmarked items are equally ineligible, so they merge freely; an eligible item
+     * only merges with an eligible item of the same crop.
+     */
+    static boolean mayMerge(Marker entity, Marker target) {
+        return Objects.equals(entity.creditableCropId(), target.creditableCropId());
     }
 
     /** The entity's marker after a player pickup moves the stack's marker onto it. */

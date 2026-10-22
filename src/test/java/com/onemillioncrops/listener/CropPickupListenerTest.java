@@ -23,6 +23,25 @@ class CropPickupListenerTest {
             Set.of(Material.RED_MUSHROOM, Material.RED_MUSHROOM_BLOCK), "Red Mushroom");
 
     @Test
+    void mergesIneligibleItemsWhetherBlockedOrUnmarked() {
+        Marker blocked = new Marker(true, null);
+
+        assertTrue(CropPickupListener.mayMerge(blocked, Marker.NONE));
+        assertTrue(CropPickupListener.mayMerge(Marker.NONE, blocked));
+        assertTrue(CropPickupListener.mayMerge(new Marker(true, "wheat"), Marker.NONE));
+    }
+
+    @Test
+    void mergesEligibleItemsOnlyWithTheSameEligibleCrop() {
+        Marker wheat = new Marker(false, "wheat");
+
+        assertTrue(CropPickupListener.mayMerge(wheat, new Marker(false, "wheat")));
+        assertFalse(CropPickupListener.mayMerge(wheat, new Marker(false, "carrot")));
+        assertFalse(CropPickupListener.mayMerge(wheat, Marker.NONE));
+        assertFalse(CropPickupListener.mayMerge(new Marker(true, null), wheat));
+    }
+
+    @Test
     void neverCountsAnUnmarkedCrop() {
         // An allay's throw, a broken chest minecart or a killed donkey all spawn unmarked items.
         assertNull(CropPickupListener.creditableCrop(Material.WHEAT, null));
