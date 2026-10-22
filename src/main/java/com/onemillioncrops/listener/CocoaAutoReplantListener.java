@@ -88,10 +88,11 @@ public final class CocoaAutoReplantListener implements Listener {
     /**
      * Water-harvested beans have no player to credit, so they count straight toward
      * the shared total (like a hopper farm's output would) instead of waiting on
-     * someone to walk over and collect them from the ground.
+     * someone to walk over and collect them from the ground. In ALLOWLIST mode a farm
+     * cannot credit by itself, so the beans wait for an allowlisted player instead.
      */
     private void creditHarvestedBeans(List<ItemStack> drops) {
-        if (!plugin.configManager().settings().allowAutomatedFarms()) {
+        if (!plugin.configManager().settings().creditsAutomatedFarms()) {
             return;
         }
         CropDefinition crop = plugin.configManager().cropByItem(Material.COCOA_BEANS);

@@ -93,7 +93,7 @@ public final class CropPickupListener implements Listener {
         if (block.getType() == Material.COCOA
                 || !isCropSource(block.getType())
                 || !CocoaAutoReplantListener.isWater(event.getSource().getType())
-                || !plugin.configManager().settings().allowAutomatedFarms()) {
+                || !plugin.configManager().settings().creditsAutomatedFarms()) {
             return;
         }
         CropDefinition crop = plugin.configManager().cropBySource(block.getState());
