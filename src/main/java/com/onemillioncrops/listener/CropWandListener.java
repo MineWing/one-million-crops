@@ -113,8 +113,8 @@ public final class CropWandListener implements Listener {
      * so both inspecting and depositing need a plain right-click to be allowed first.
      */
     private boolean mayOpen(Player player, Block block, BlockFace face) {
-        PlayerInteractEvent probe = new PlayerInteractEvent(player, Action.RIGHT_CLICK_BLOCK, null,
-                block, face, EquipmentSlot.HAND);
+        // The public constructor uses the main hand, matching the click being checked.
+        PlayerInteractEvent probe = new PlayerInteractEvent(player, Action.RIGHT_CLICK_BLOCK, null, block, face);
         checkingAccess = true;
         try {
             Bukkit.getPluginManager().callEvent(probe);
