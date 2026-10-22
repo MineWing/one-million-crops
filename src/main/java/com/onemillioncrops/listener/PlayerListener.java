@@ -36,13 +36,14 @@ public final class PlayerListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onInsideBerryBush(EntityInsideBlockEvent event) {
-        if (shouldCancelBerryBushCollision(event.getEntity() instanceof Player, event.getBlock().getType())) {
+        if (shouldCancelBerryBushCollision(plugin.configManager().settings().preventBerryBushDamage(),
+                event.getEntity() instanceof Player, event.getBlock().getType())) {
             event.setCancelled(true);
         }
     }
 
-    static boolean shouldCancelBerryBushCollision(boolean player, Material blockType) {
-        return player && blockType == Material.SWEET_BERRY_BUSH;
+    static boolean shouldCancelBerryBushCollision(boolean preventDamage, boolean player, Material blockType) {
+        return preventDamage && player && blockType == Material.SWEET_BERRY_BUSH;
     }
 
     @EventHandler

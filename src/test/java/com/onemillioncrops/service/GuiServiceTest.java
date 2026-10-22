@@ -13,4 +13,17 @@ final class GuiServiceTest {
         assertTrue(GuiService.hasNextPage(0, 100));
         assertFalse(GuiService.hasNextPage(99, 100));
     }
+
+    @Test
+    void manyRefreshRequestsCauseOneRebuild() {
+        GuiService.RefreshCoalescer refresh = new GuiService.RefreshCoalescer();
+        assertFalse(refresh.takeStale());
+
+        refresh.markStale();
+        refresh.markStale();
+        refresh.markStale();
+
+        assertTrue(refresh.takeStale());
+        assertFalse(refresh.takeStale());
+    }
 }

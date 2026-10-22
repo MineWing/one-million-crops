@@ -10,18 +10,26 @@ import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.FireworkEffect;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.entity.Firework;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.inventory.meta.FireworkMeta;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -34,13 +42,19 @@ public final class SummaryActionService {
     private static final String PERSONAL_BEST_AMOUNT =
             "<#FFD166><bold>%s</bold></#FFD166> "
                     + "<dark_gray>(</dark_gray><#8CE99A>NEW PB</#8CE99A><dark_gray>)</dark_gray>";
+    /** Placeholders filled per harvest-summary row; see {@link #row(SummaryEntry)}. */
+    private static final Set<String> SUMMARY_ROW_KEYS = Set.of("player", "amount", "amount-display");
     private static final float DEFAULT_SOUND_VOLUME = 0.7f;
     private static final float DEFAULT_SOUND_PITCH = 1.2f;
 
     private final OneMillionCropsPlugin plugin;
+    private final NamespacedKey celebrationFirework;
 
+    /** Construct once per plugin enable: each instance registers its own firework damage guard. */
     public SummaryActionService(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
+        this.celebrationFirework = new NamespacedKey(plugin, "celebration-firework");
+        plugin.getServer().getPluginManager().registerEvents(new FireworkDamageGuard(celebrationFirework), plugin);
     }
 
     public void execute(String event, List<? extends Audience> recipients, List<Player> players,
@@ -51,7 +65,7 @@ public final class SummaryActionService {
         }
         Map<String, String> common = new HashMap<>(replacements);
         common.putIfAbsent("prefix", plugin.configManager().message("prefix"));
-        executeExpanded(configured.actions(), recipients, players, rows, Map.copyOf(common));
+        executeExpanded(configured.actions(), recipients, players, rows, Set.of(), Map.copyOf(common));
     }
 
     void execute(List<String> configuredActions, List<Player> recipients, List<SummaryEntry> entries,
@@ -61,19 +75,19 @@ public final class SummaryActionService {
                 "minutes", Integer.toString(intervalMinutes),
                 "prefix", plugin.configManager().message("prefix")
         );
-        executeExpanded(configuredActions, recipients, recipients, rows(entries), common);
+        executeExpanded(configuredActions, recipients, recipients, rows(entries), SUMMARY_ROW_KEYS, common);
     }
 
     private void executeExpanded(List<String> configuredActions, List<? extends Audience> recipients,
                                  List<Player> players, List<Map<String, String>> rows,
-                                 Map<String, String> common) {
+                                 Set<String> rowKeys, Map<String, String> common) {
         for (String configuredAction : configuredActions) {
             ParsedAction action = parse(configuredAction);
             if (action == null) {
                 plugin.getLogger().warning("Ignoring invalid harvestSummary action: " + configuredAction);
                 continue;
             }
-            for (String payload : expandRows(action.payload(), rows, common)) {
+            for (String payload : expandRows(action.payload(), rows, rowKeys, common)) {
                 execute(action.tag(), payload, recipients, players);
             }
         }
@@ -184,12 +198,15 @@ public final class SummaryActionService {
         }
     }
 
-    private static void spawnFirework(Player player, List<Color> colors, FireworkEffect.Type type, int power) {
-        Firework firework = player.getWorld().spawn(player.getLocation().add(0.0, 1.0, 0.0), Firework.class);
-        FireworkMeta meta = firework.getFireworkMeta();
-        meta.addEffect(FireworkEffect.builder().with(type).withColor(colors).flicker(true).trail(true).build());
-        meta.setPower(power);
-        firework.setFireworkMeta(meta);
+    private void spawnFirework(Player player, List<Color> colors, FireworkEffect.Type type, int power) {
+        // Tagged before it enters the world, so the guard recognises it even if it detonates at once.
+        player.getWorld().spawn(player.getLocation().add(0.0, 1.0, 0.0), Firework.class, firework -> {
+            firework.getPersistentDataContainer().set(celebrationFirework, PersistentDataType.BOOLEAN, true);
+            FireworkMeta meta = firework.getFireworkMeta();
+            meta.addEffect(FireworkEffect.builder().with(type).withColor(colors).flicker(true).trail(true).build());
+            meta.setPower(power);
+            firework.setFireworkMeta(meta);
+        });
     }
 
     static ParsedAction parse(String configured) {
@@ -206,7 +223,7 @@ public final class SummaryActionService {
     }
 
     static List<String> expand(String payload, List<SummaryEntry> entries, Map<String, String> common) {
-        return expandRows(payload, rows(entries), common);
+        return expandRows(payload, rows(entries), SUMMARY_ROW_KEYS, common);
     }
 
     private static List<Map<String, String>> rows(List<SummaryEntry> entries) {
@@ -225,8 +242,16 @@ public final class SummaryActionService {
         );
     }
 
-    static List<String> expandRows(String payload, List<Map<String, String>> rows, Map<String, String> common) {
-        boolean hasRowPlaceholder = rows.stream().flatMap(row -> row.keySet().stream())
+    /**
+     * Repeats a payload once per row when it uses a row placeholder, or sends it once otherwise.
+     * {@code rowKeys} names row placeholders known up front, so a row template with no rows sends
+     * nothing instead of leaking raw {@code %player%} text.
+     */
+    static List<String> expandRows(String payload, List<Map<String, String>> rows, Set<String> rowKeys,
+                                   Map<String, String> common) {
+        Set<String> keys = new HashSet<>(rowKeys);
+        rows.forEach(row -> keys.addAll(row.keySet()));
+        boolean hasRowPlaceholder = keys.stream()
                 .anyMatch(key -> payload.contains("%" + key + "%") || payload.contains("<" + key + ">"));
         if (!hasRowPlaceholder) {
             return List.of(Text.replace(payload, common));
@@ -336,6 +361,21 @@ public final class SummaryActionService {
     }
 
     record ParsedAction(String tag, String payload) {
+    }
+
+    /**
+     * A rocket that hits a ceiling explodes straight away and hurts everything nearby, which can kill
+     * an unarmoured player celebrating underground. Celebration fireworks are cosmetic, so their
+     * explosion damage is cancelled outright.
+     */
+    record FireworkDamageGuard(NamespacedKey key) implements Listener {
+        @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+        public void onFireworkDamage(EntityDamageByEntityEvent event) {
+            if (event.getDamager() instanceof Firework firework
+                    && firework.getPersistentDataContainer().has(key, PersistentDataType.BOOLEAN)) {
+                event.setCancelled(true);
+            }
+        }
     }
 
     record SummaryEntry(String player, long amount, boolean personalBest) {

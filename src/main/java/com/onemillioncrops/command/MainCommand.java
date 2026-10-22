@@ -40,8 +40,7 @@ public final class MainCommand implements CommandExecutor, TabCompleter {
         }
         if (subcommand.equals("scoreboard")) {
             if (permitted(sender, "onemillion.progress") && requirePlayer(sender) instanceof Player player) {
-                boolean enabled = plugin.scoreboards().toggle(player);
-                plugin.sendActions(enabled ? "scoreboard-on" : "scoreboard-off", sender, Map.of());
+                plugin.sendActions(plugin.scoreboards().toggle(player).action(), sender, Map.of());
             }
             return true;
         }
