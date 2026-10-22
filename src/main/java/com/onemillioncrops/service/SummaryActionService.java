@@ -10,11 +10,17 @@ import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.FireworkEffect;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.entity.Firework;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.inventory.meta.FireworkMeta;
+import org.bukkit.persistence.PersistentDataType;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -38,9 +44,13 @@ public final class SummaryActionService {
     private static final float DEFAULT_SOUND_PITCH = 1.2f;
 
     private final OneMillionCropsPlugin plugin;
+    private final NamespacedKey celebrationFirework;
 
+    /** Construct once per plugin enable: each instance registers its own firework damage guard. */
     public SummaryActionService(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
+        this.celebrationFirework = new NamespacedKey(plugin, "celebration-firework");
+        plugin.getServer().getPluginManager().registerEvents(new FireworkDamageGuard(celebrationFirework), plugin);
     }
 
     public void execute(String event, List<? extends Audience> recipients, List<Player> players,
@@ -184,12 +194,15 @@ public final class SummaryActionService {
         }
     }
 
-    private static void spawnFirework(Player player, List<Color> colors, FireworkEffect.Type type, int power) {
-        Firework firework = player.getWorld().spawn(player.getLocation().add(0.0, 1.0, 0.0), Firework.class);
-        FireworkMeta meta = firework.getFireworkMeta();
-        meta.addEffect(FireworkEffect.builder().with(type).withColor(colors).flicker(true).trail(true).build());
-        meta.setPower(power);
-        firework.setFireworkMeta(meta);
+    private void spawnFirework(Player player, List<Color> colors, FireworkEffect.Type type, int power) {
+        // Tagged before it enters the world, so the guard recognises it even if it detonates at once.
+        player.getWorld().spawn(player.getLocation().add(0.0, 1.0, 0.0), Firework.class, firework -> {
+            firework.getPersistentDataContainer().set(celebrationFirework, PersistentDataType.BOOLEAN, true);
+            FireworkMeta meta = firework.getFireworkMeta();
+            meta.addEffect(FireworkEffect.builder().with(type).withColor(colors).flicker(true).trail(true).build());
+            meta.setPower(power);
+            firework.setFireworkMeta(meta);
+        });
     }
 
     static ParsedAction parse(String configured) {
@@ -336,6 +349,21 @@ public final class SummaryActionService {
     }
 
     record ParsedAction(String tag, String payload) {
+    }
+
+    /**
+     * A rocket that hits a ceiling explodes straight away and hurts everything nearby, which can kill
+     * an unarmoured player celebrating underground. Celebration fireworks are cosmetic, so their
+     * explosion damage is cancelled outright.
+     */
+    record FireworkDamageGuard(NamespacedKey key) implements Listener {
+        @EventHandler(priority = EventPriority.LOW, ignoreCancelled = true)
+        public void onFireworkDamage(EntityDamageByEntityEvent event) {
+            if (event.getDamager() instanceof Firework firework
+                    && firework.getPersistentDataContainer().has(key, PersistentDataType.BOOLEAN)) {
+                event.setCancelled(true);
+            }
+        }
     }
 
     record SummaryEntry(String player, long amount, boolean personalBest) {

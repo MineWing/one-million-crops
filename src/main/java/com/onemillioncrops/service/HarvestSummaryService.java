@@ -24,7 +24,6 @@ import java.util.logging.Level;
 /** Announces how much each currently online player harvested during the configured time window. */
 public final class HarvestSummaryService {
     private final OneMillionCropsPlugin plugin;
-    private final SummaryActionService actions;
     private final Map<UUID, Long> harvested = new HashMap<>();
     private final Map<UUID, Long> personalBests = new HashMap<>();
     private final Set<UUID> countdownViewers = new HashSet<>();
@@ -39,7 +38,6 @@ public final class HarvestSummaryService {
 
     public HarvestSummaryService(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
-        this.actions = new SummaryActionService(plugin);
     }
 
     public void start() {
@@ -134,7 +132,8 @@ public final class HarvestSummaryService {
                     summary.player().getName(), summary.amount(), personalBest));
         }
         savePersonalBests(improvedPersonalBests);
-        actions.execute(plugin.configManager().harvestSummary().actions(),
+        // Shares the plugin's action service: each instance registers a firework damage listener.
+        plugin.actions().execute(plugin.configManager().harvestSummary().actions(),
                 players.stream().map(PlayerTotal::player).toList(), entries, total, intervalMinutes);
     }
 
