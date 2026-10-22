@@ -1,6 +1,7 @@
 package com.onemillioncrops.listener;
 
 import org.bukkit.Material;
+import org.bukkit.event.Event;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -37,5 +38,13 @@ final class CropWandListenerTest {
         assertFalse(CropWandListener.isClearableSeed(Material.CARROT));
         assertFalse(CropWandListener.isClearableSeed(Material.NETHER_WART));
         assertFalse(CropWandListener.isClearableSeed(null));
+    }
+
+    @Test
+    void deniesContainerAccessWhenTheProbeIsCancelledOrBlockUseIsDenied() {
+        assertFalse(CropWandListener.accessDenied(false, Event.Result.ALLOW));
+        assertFalse(CropWandListener.accessDenied(false, Event.Result.DEFAULT));
+        assertTrue(CropWandListener.accessDenied(true, Event.Result.ALLOW));
+        assertTrue(CropWandListener.accessDenied(false, Event.Result.DENY));
     }
 }
