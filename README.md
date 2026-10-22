@@ -25,7 +25,7 @@ OneMillionCrops is a server-wide Paper challenge where everyone contributes towa
 | | |
 |---|---|
 | **One set of totals** | Every participant contributes to the same crop objectives and combined goal |
-| **Accurate counting** | Tracks crop provenance through water, pistons, hoppers, storage, partial pickups, and player drops |
+| **Accurate counting** | Only harvested crops count, tracked through water, pistons, physics, hoppers, storage, and partial pickups |
 | **Live progress** | Animated `/progress` GUI, rotating scoreboard, action bars, milestones, and completion sequences |
 | **Farm tools** | Storage crop wand and a protected two-point farmland and nether wart planting wand |
 | **Safe persistence** | SQLite transactions, autosaves, per-player contributions, and automatic pre-reset backups |
@@ -34,18 +34,20 @@ OneMillionCrops is a server-wide Paper challenge where everyone contributes towa
 
 ## Counting that stays honest
 
-The default rules support manual and automatic farms while preventing common recount loops:
+The default rules support manual and automatic farms while preventing recount loops. A crop counts only when it comes from a harvest; everything else is ignored, even when picked up again.
 
+- **What counts:** a player breaking or picking a fully grown crop, water or pistons breaking one, or physics breaking one (such as the upper part of sugar cane, bamboo, kelp, cactus, or chorus when its base is broken). Crops broken by an explosion, a farmer villager, or a fox also count.
+- **What never counts:** crops that come from anywhere else. That includes crops thrown by allays or villagers, dropped by mobs, or spilled from a broken chest, chest minecart, chest boat, or a donkey's chest.
 - Picking up a stack adds the exact amount that entered the inventory.
-- Water- and piston-harvested drops retain their provenance through hoppers and storage.
+- Farm drops keep their eligibility through hoppers and storage, and count once: when a player picks them up or takes them out.
 - Cocoa pods harvested by water or by moving their supporting jungle logs are replanted at age 0, consuming one bean from the drops.
 - Eligible crops in chests, barrels, hoppers, and shulker boxes can be inspected or deposited with the Crop Wand.
-- Crops deposited by a player are not made eligible again simply by withdrawing them.
-- Deliberately dropped items and dispenser/dropper outputs remain ineligible.
+- Crops deposited by a player are not made eligible again by withdrawing them.
+- Deliberately dropped items, death drops, and dispenser/dropper outputs stay ineligible while `counting.block-player-redrops` is on.
 - Rebreaking a player-placed crop source does not count until it has genuinely grown.
-- Totals clamp exactly at the configured target.
+- Totals stop at the configured target.
 
-Set `counting.allow-automated-farms: false`, or toggle it live with `/1mill automode`, to leave water-harvested drops for players to collect instead of crediting them automatically. Hand pickups and collection from storage still count in either mode. Participant mode defaults to `EVERYONE`; use `ALLOWLIST` with UUIDs for a closed team.
+Set `counting.allow-automated-farms: false`, or toggle it live with `/1mill automode`, to leave water-harvested drops for players to collect instead of crediting them automatically. Hand pickups and collection from storage still count in either mode. Participant mode defaults to `EVERYONE`; use `ALLOWLIST` with UUIDs for a closed team. In `ALLOWLIST` mode farms never credit the total by themselves; their drops wait for an allowlisted player to collect them.
 
 ## Player experience
 
