@@ -186,7 +186,7 @@ help:
 crop-wand-received:
   enabled: true
   actions:
-    - '[message] %prefix% <white>Crop Wand received.</white> <gray>Left-click to inspect, right-click to deposit, or shift-right-click to deposit and clear seeds.</gray>'
+    - '[message] %prefix% <white>Crop Wand received.</white> <gray>Left-click to inspect, right-click to deposit, or shift-right-click to deposit and clear common seeds.</gray>'
     - '[sound] ENTITY_ITEM_PICKUP 0.7 1.35'
 crop-wand-inventory-full:
   enabled: true
