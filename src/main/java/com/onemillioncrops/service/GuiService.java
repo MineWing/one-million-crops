@@ -48,6 +48,7 @@ public final class GuiService {
 
     private final OneMillionCropsPlugin plugin;
     private final ItemStack[] borderPanes;
+    private final RefreshCoalescer refresh = new RefreshCoalescer();
     private BukkitTask animationTask;
     private int animationFrame;
 
@@ -61,11 +62,22 @@ public final class GuiService {
 
     public void start() {
         stop();
+        // A reload may change progress or lore, so menus left open pick it up on the first frame.
+        refresh.markStale();
         animationTask = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             animationFrame++;
+            boolean rebuild = refresh.takeStale();
             for (Player player : Bukkit.getOnlinePlayers()) {
                 InventoryHolder holder = player.getOpenInventory().getTopInventory().getHolder(false);
-                if (holder instanceof ProgressGuiHolder || holder instanceof CropToggleGuiHolder) {
+                if (holder instanceof ProgressGuiHolder progressHolder) {
+                    if (rebuild) {
+                        refreshInventory(player, progressHolder);
+                    }
+                    animateBorder(holder.getInventory());
+                } else if (holder instanceof CropToggleGuiHolder toggleHolder) {
+                    if (rebuild) {
+                        refreshToggleInventory(toggleHolder);
+                    }
                     animateBorder(holder.getInventory());
                 }
             }
@@ -112,15 +124,13 @@ public final class GuiService {
         show(player, inventory);
     }
 
+    /**
+     * Marks open menus stale. Farms credit crops every tick, so rebuilding each crop item and its
+     * MiniMessage lore on every call is wasteful; the animation task instead rebuilds stale menus at
+     * most once per gui.animation-ticks. Newly opened menus render immediately in {@link #open}.
+     */
     public void refreshOpen() {
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            InventoryHolder holder = player.getOpenInventory().getTopInventory().getHolder(false);
-            if (holder instanceof ProgressGuiHolder progressHolder) {
-                refreshInventory(player, progressHolder);
-            } else if (holder instanceof CropToggleGuiHolder toggleHolder) {
-                refreshToggleInventory(toggleHolder);
-            }
-        }
+        refresh.markStale();
     }
 
     private void refreshInventory(Player player, ProgressGuiHolder holder) {
@@ -324,6 +334,21 @@ public final class GuiService {
         if (animationTask != null) {
             animationTask.cancel();
             animationTask = null;
+        }
+    }
+
+    /** Collapses any number of refresh requests between two animation frames into one rebuild. */
+    static final class RefreshCoalescer {
+        private boolean stale;
+
+        void markStale() {
+            stale = true;
+        }
+
+        boolean takeStale() {
+            boolean wasStale = stale;
+            stale = false;
+            return wasStale;
         }
     }
 }
