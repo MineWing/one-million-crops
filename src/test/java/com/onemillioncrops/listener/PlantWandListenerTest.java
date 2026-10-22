@@ -1,5 +1,6 @@
 package com.onemillioncrops.listener;
 
+import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
@@ -107,6 +108,38 @@ final class PlantWandListenerTest {
                 PlantWandListener.crop("wheat").soil()));
         assertEquals(List.of(farmland, soulSand), PlantWandListener.findSoil(world, selection,
                 Material.FARMLAND, Material.SOUL_SAND));
+    }
+
+    @Test
+    void protectsTheSquareAroundSpawnUpToTheRadius() {
+        var protection = PlantWandListener.SpawnProtection.of(true, 16, true, false, 100, -50);
+
+        assertTrue(protection.protects(100, -50));
+        assertTrue(protection.protects(116, -34));
+        assertTrue(protection.protects(84, -66));
+        assertFalse(protection.protects(117, -50));
+        assertFalse(protection.protects(100, -67));
+        assertFalse(protection.protects(Integer.MAX_VALUE, Integer.MIN_VALUE));
+    }
+
+    @Test
+    void appliesSpawnProtectionOnlyWhereVanillaWould() {
+        assertFalse(PlantWandListener.SpawnProtection.of(false, 16, true, false, 0, 0).protects(0, 0));
+        assertFalse(PlantWandListener.SpawnProtection.of(true, 0, true, false, 0, 0).protects(0, 0));
+        assertFalse(PlantWandListener.SpawnProtection.of(true, 16, false, false, 0, 0).protects(0, 0));
+        assertFalse(PlantWandListener.SpawnProtection.of(true, 16, true, true, 0, 0).protects(0, 0));
+        assertFalse(PlantWandListener.SpawnProtection.NONE.protects(0, 0));
+    }
+
+    @Test
+    void refusesToBuildInAdventureModeOrUnderSpawnProtection() {
+        var protection = PlantWandListener.SpawnProtection.of(true, 16, true, false, 0, 0);
+        var none = PlantWandListener.SpawnProtection.NONE;
+
+        assertTrue(PlantWandListener.canBuild(GameMode.SURVIVAL, none, 0, 0));
+        assertTrue(PlantWandListener.canBuild(GameMode.CREATIVE, protection, 17, 0));
+        assertFalse(PlantWandListener.canBuild(GameMode.ADVENTURE, none, 0, 0));
+        assertFalse(PlantWandListener.canBuild(GameMode.SURVIVAL, protection, 16, 16));
     }
 
     /** A one-row world keyed by block X, with only the listed chunk X coordinates loaded. */

@@ -12,9 +12,11 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
+import org.bukkit.WorldBorder;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -240,18 +242,25 @@ public final class PlantWandListener implements Listener {
         int limit = Math.min(Math.min(available, farmland.size()), MAX_PLANTS_PER_USE);
         List<Location> planted = new ArrayList<>(limit);
         ItemStack placementItem = new ItemStack(crop.seed());
+        BlockData cropData = crop.block().createBlockData();
+        WorldBorder border = world.getWorldBorder();
+        SpawnProtection spawnProtection = spawnProtection(player, world);
         for (Block soil : farmland) {
             if (planted.size() >= limit) {
                 break;
             }
             Block target = soil.getRelative(BlockFace.UP);
-            if (!target.isEmpty()) {
+            // canPlace also checks the crop could survive there, such as its light level.
+            if (!target.isEmpty() || !border.isInside(target.getLocation().add(0.5, 0.0, 0.5))
+                    || !target.canPlace(cropData)) {
                 continue;
             }
             BlockState replaced = target.getState();
             target.setType(crop.block(), false);
-            BlockPlaceEvent placeEvent = new BlockPlaceEvent(target, replaced, soil, placementItem,
-                    player, true, EquipmentSlot.HAND);
+            // Vanilla's own build rules go in canBuild so protection plugins can still override them.
+            BlockPlaceEvent placeEvent = new BlockPlaceEvent(target, replaced, soil, placementItem, player,
+                    canBuild(player.getGameMode(), spawnProtection, target.getX(), target.getZ()),
+                    EquipmentSlot.HAND);
             Bukkit.getPluginManager().callEvent(placeEvent);
             if (placeEvent.isCancelled() || !placeEvent.canBuild()) {
                 replaced.update(true, false);
@@ -318,6 +327,16 @@ public final class PlantWandListener implements Listener {
             return null;
         }
         return world;
+    }
+
+    private static SpawnProtection spawnProtection(Player player, World world) {
+        Location spawn = world.getSpawnLocation();
+        return SpawnProtection.of(world.equals(Bukkit.getWorlds().get(0)), Bukkit.getSpawnRadius(),
+                !Bukkit.getOperators().isEmpty(), player.isOp(), spawn.getBlockX(), spawn.getBlockZ());
+    }
+
+    static boolean canBuild(GameMode gameMode, SpawnProtection spawnProtection, int x, int z) {
+        return gameMode != GameMode.ADVENTURE && !spawnProtection.protects(x, z);
     }
 
     static List<Block> findSoil(World world, Selection selection, Material... soilTypes) {
@@ -490,5 +509,24 @@ public final class PlantWandListener implements Listener {
     }
 
     record Selection(BlockPosition first, BlockPosition second) {
+    }
+
+    /** Vanilla spawn protection: the square of blocks within the radius of the main world's spawn. */
+    record SpawnProtection(int spawnX, int spawnZ, int radius) {
+        static final SpawnProtection NONE = new SpawnProtection(0, 0, 0);
+
+        /** Mirrors the dedicated server, which only protects once an operator exists to be exempt. */
+        static SpawnProtection of(boolean mainWorld, int radius, boolean operatorsExist, boolean operator,
+                                  int spawnX, int spawnZ) {
+            return mainWorld && radius > 0 && operatorsExist && !operator
+                    ? new SpawnProtection(spawnX, spawnZ, radius)
+                    : NONE;
+        }
+
+        boolean protects(int x, int z) {
+            long deltaX = Math.abs((long) x - spawnX);
+            long deltaZ = Math.abs((long) z - spawnZ);
+            return radius > 0 && Math.max(deltaX, deltaZ) <= radius;
+        }
     }
 }
