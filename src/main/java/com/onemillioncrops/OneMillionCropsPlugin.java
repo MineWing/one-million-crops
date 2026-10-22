@@ -54,7 +54,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
     private CropWandListener cropWand;
     private PlantWandListener plantWand;
     private BukkitTask autosaveTask;
-    private BukkitTask visualRefreshTask;
     private Runnable unregisterPlaceholders = () -> { };
     private volatile boolean maintenance;
     private volatile boolean resetDatabaseStarted;
@@ -184,7 +183,8 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         if (result.completed()) {
             requestSave();
         }
-        requestVisualRefresh();
+        // Only marks open menus stale; GuiService rebuilds them on its next animation frame.
+        gui.refreshOpen();
     }
 
     public void reloadPlugin(CommandSender sender) {
@@ -533,15 +533,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         }
     }
 
-    private void requestVisualRefresh() {
-        if (visualRefreshTask != null) {
-            return;
-        }
-        visualRefreshTask = Bukkit.getScheduler().runTaskLater(this, () -> {
-            visualRefreshTask = null;
-            gui.refreshOpen();
-        }, 1L);
-    }
 
     @Override
     public void onDisable() {
@@ -562,9 +553,6 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         }
         if (harvestSummary != null) {
             harvestSummary.stop();
-        }
-        if (visualRefreshTask != null) {
-            visualRefreshTask.cancel();
         }
         if (database != null) {
             synchronized (persistenceLock) {
