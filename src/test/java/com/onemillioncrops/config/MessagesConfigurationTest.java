@@ -132,6 +132,26 @@ final class MessagesConfigurationTest {
     }
 
     @Test
+    void messageDefaultsAreCopiedOnlyWhenThePluginVersionChanges() {
+        var installed = new YamlConfiguration();
+        assertTrue(ConfigManager.shouldCopyMessageDefaults(installed, "1.0.20"));
+
+        installed.set(ConfigManager.MESSAGES_DEFAULTS_VERSION_KEY, "1.0.20");
+        assertFalse(ConfigManager.shouldCopyMessageDefaults(installed, "1.0.20"));
+        assertTrue(ConfigManager.shouldCopyMessageDefaults(installed, "1.0.21"));
+    }
+
+    @Test
+    void messageDefaultsVersionIgnoresTheBundledDefaults() {
+        var bundled = new YamlConfiguration();
+        bundled.set(ConfigManager.MESSAGES_DEFAULTS_VERSION_KEY, "1.0.20");
+        var installed = new YamlConfiguration();
+        installed.setDefaults(bundled);
+
+        assertTrue(ConfigManager.shouldCopyMessageDefaults(installed, "1.0.20"));
+    }
+
+    @Test
     void paletteMigrationUpdatesCopyWhilePreservingSettings() {
         var resource = Objects.requireNonNull(getClass().getResourceAsStream("/messages.yml"));
         var bundled = YamlConfiguration.loadConfiguration(

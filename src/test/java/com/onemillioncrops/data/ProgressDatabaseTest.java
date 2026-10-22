@@ -1,21 +1,28 @@
 package com.onemillioncrops.data;
 
+import com.onemillioncrops.model.CropDefinition;
 import com.onemillioncrops.model.ProgressSnapshot;
+import com.onemillioncrops.service.ProgressService;
+import org.bukkit.Material;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -39,27 +46,34 @@ class ProgressDatabaseTest {
     }
 
     @Test
-    void managedSaveRemovesContributionsMissingFromSnapshot() throws Exception {
-        save(snapshot(25, Map.of(PLAYER, Map.of("wheat", 25L))));
-        database.save(snapshot(0, Map.of()), Set.of("wheat"));
+    void saveLeavesRowsTheSnapshotDoesNotCarry() throws Exception {
+        UUID other = UUID.randomUUID();
+        save(new ProgressSnapshot(
+                Map.of("wheat", 25L, "carrot", 10L),
+                Map.of(PLAYER, Map.of("wheat", 25L, "carrot", 10L), other, Map.of("wheat", 5L)),
+                Map.of("wheat", false, "carrot", false)));
+
+        save(new ProgressSnapshot(Map.of("carrot", 12L), Map.of(PLAYER, Map.of("carrot", 12L)),
+                Map.of("carrot", false)));
 
         ProgressSnapshot loaded = database.load();
-        assertEquals(0, loaded.totals().get("wheat"));
-        assertTrue(loaded.contributions().isEmpty());
+        assertEquals(Map.of("wheat", 25L, "carrot", 12L), loaded.totals());
+        assertEquals(Map.of("wheat", 25L, "carrot", 12L), loaded.contributions().get(PLAYER));
+        assertEquals(Map.of("wheat", 5L), loaded.contributions().get(other));
     }
 
     @Test
-    void managedSaveRetainsProgressForDisabledCrops() throws Exception {
+    void saveRetainsProgressForDisabledCrops() throws Exception {
         save(new ProgressSnapshot(
                 Map.of("wheat", 25L, "carrot", 10L),
                 Map.of(PLAYER, Map.of("wheat", 25L, "carrot", 10L)),
                 Map.of("wheat", false, "carrot", false)));
 
-        database.save(new ProgressSnapshot(
-                        Map.of("carrot", 20L),
-                        Map.of(PLAYER, Map.of("carrot", 20L)),
-                        Map.of("carrot", false)),
-                Set.of("carrot"));
+        // wheat is disabled, so the live ProgressService only knows about carrot.
+        save(new ProgressSnapshot(
+                Map.of("carrot", 20L),
+                Map.of(PLAYER, Map.of("carrot", 20L)),
+                Map.of("carrot", false)));
 
         ProgressSnapshot loaded = database.load();
         assertEquals(Map.of("wheat", 25L, "carrot", 20L), loaded.totals());
@@ -67,22 +81,66 @@ class ProgressDatabaseTest {
     }
 
     @Test
-    void managedSaveReplacesSnapshotCropsOutsideTheManagedSet() throws Exception {
+    void saveReplacesExistingRowsWithTheSnapshotValues() throws Exception {
         save(new ProgressSnapshot(
                 Map.of("wheat", 25L, "carrot", 10L),
                 Map.of(PLAYER, Map.of("wheat", 25L, "carrot", 10L)),
                 Map.of("wheat", false, "carrot", false)));
 
-        // wheat already has rows but is not managed, as when the live crop list and config disagree.
-        database.save(new ProgressSnapshot(
-                        Map.of("wheat", 30L, "carrot", 20L),
-                        Map.of(PLAYER, Map.of("wheat", 30L, "carrot", 20L)),
-                        Map.of("wheat", false, "carrot", false)),
-                Set.of("carrot"));
+        save(new ProgressSnapshot(
+                Map.of("wheat", 100L, "carrot", 8L),
+                Map.of(PLAYER, Map.of("wheat", 30L, "carrot", 8L)),
+                Map.of("wheat", true, "carrot", false)));
 
         ProgressSnapshot loaded = database.load();
-        assertEquals(Map.of("wheat", 30L, "carrot", 20L), loaded.totals());
-        assertEquals(Map.of("wheat", 30L, "carrot", 20L), loaded.contributions().get(PLAYER));
+        assertEquals(Map.of("wheat", 100L, "carrot", 8L), loaded.totals());
+        assertEquals(Map.of("wheat", true, "carrot", false), loaded.completed());
+        assertEquals(Map.of("wheat", 30L, "carrot", 8L), loaded.contributions().get(PLAYER));
+    }
+
+    @Test
+    void routineSaveWritesOnlyChangedRows() throws Exception {
+        // A row for a crop the service does not manage, such as a disabled one.
+        save(new ProgressSnapshot(Map.of("beetroot", 7L), Map.of(PLAYER, Map.of("beetroot", 7L)),
+                Map.of("beetroot", false)));
+        ProgressService service = service(database.load());
+        service.add(PLAYER, "wheat", 10);
+        service.add(PLAYER, "carrot", 5);
+        save(service.takeDirtySnapshot());
+
+        service.add(PLAYER, "carrot", 2);
+        ProgressSnapshot changes = service.takeDirtySnapshot();
+        assertEquals(Set.of("carrot"), changes.totals().keySet());
+        // Change wheat behind the service's back: a routine save of carrot must not touch it.
+        save(new ProgressSnapshot(Map.of("wheat", 99L), Map.of(), Map.of("wheat", false)));
+        save(changes);
+
+        ProgressSnapshot loaded = database.load();
+        assertEquals(Map.of("beetroot", 7L, "wheat", 99L, "carrot", 7L), loaded.totals());
+        assertEquals(Map.of("beetroot", 7L, "wheat", 10L, "carrot", 7L), loaded.contributions().get(PLAYER));
+    }
+
+    @Test
+    void failedRoutineSaveIsFollowedByAFullSave() throws Exception {
+        ProgressService service = service(database.load());
+        service.add(PLAYER, "wheat", 10);
+        service.add(PLAYER, "carrot", 5);
+        save(service.takeDirtySnapshot());
+
+        service.add(PLAYER, "wheat", 7);
+        ProgressSnapshot lost = service.takeDirtySnapshot();
+        database.close();
+        assertThrows(SQLException.class, () -> save(lost));
+        service.markDirty();
+        database.open();
+
+        // Only carrot changes now; the wheat change from the failed save must still reach the database.
+        service.add(PLAYER, "carrot", 3);
+        save(service.takeDirtySnapshot());
+
+        ProgressSnapshot loaded = database.load();
+        assertEquals(Map.of("wheat", 17L, "carrot", 8L), loaded.totals());
+        assertEquals(Map.of("wheat", 17L, "carrot", 8L), loaded.contributions().get(PLAYER));
     }
 
     @Test
@@ -146,20 +204,116 @@ class ProgressDatabaseTest {
 
     @Test
     void harvestPersonalBestOnlyIncreasesAndIsClearedByFullReset() throws Exception {
-        database.saveHarvestPersonalBests(Map.of(PLAYER, 100L));
-        database.saveHarvestPersonalBests(Map.of(PLAYER, 90L));
+        long generation = database.resetGeneration();
+        database.saveHarvestPersonalBests(Map.of(PLAYER, 100L), generation);
+        database.saveHarvestPersonalBests(Map.of(PLAYER, 90L), generation);
 
         assertEquals(Map.of(PLAYER, 100L), database.harvestPersonalBests());
 
-        database.saveHarvestPersonalBests(Map.of(PLAYER, 125L));
+        database.saveHarvestPersonalBests(Map.of(PLAYER, 125L), generation);
         assertEquals(Map.of(PLAYER, 125L), database.harvestPersonalBests());
 
         database.resetAll();
         assertTrue(database.harvestPersonalBests().isEmpty());
     }
 
+    @Test
+    void personalBestSaveQueuedBeforeFullResetIsDropped() throws Exception {
+        long beforeReset = database.resetGeneration();
+
+        database.resetAll();
+
+        assertFalse(database.saveHarvestPersonalBests(Map.of(PLAYER, 100L), beforeReset));
+        assertTrue(database.harvestPersonalBests().isEmpty());
+        assertTrue(database.saveHarvestPersonalBests(Map.of(PLAYER, 40L), database.resetGeneration()));
+        assertEquals(Map.of(PLAYER, 40L), database.harvestPersonalBests());
+    }
+
+    @Test
+    void cropResetDoesNotDropPersonalBestSaves() throws Exception {
+        long generation = database.resetGeneration();
+
+        database.resetCrop("wheat");
+
+        assertTrue(database.saveHarvestPersonalBests(Map.of(PLAYER, 100L), generation));
+        assertEquals(Map.of(PLAYER, 100L), database.harvestPersonalBests());
+    }
+
+    @Test
+    void backupIsAReadableCopyOfTheCurrentProgress() throws Exception {
+        save(snapshot(42, Map.of(PLAYER, Map.of("wheat", 42L))));
+
+        Path backup = database.backup(0);
+
+        assertEquals(temporaryDirectory.resolve("backups"), backup.getParent());
+        ProgressDatabase copy = new ProgressDatabase(temporaryDirectory, Logger.getAnonymousLogger(),
+                "backups/" + backup.getFileName());
+        copy.open();
+        try {
+            ProgressSnapshot loaded = copy.load();
+            assertEquals(Map.of("wheat", 42L), loaded.totals());
+            assertEquals(Map.of("wheat", 42L), loaded.contributions().get(PLAYER));
+        } finally {
+            copy.close();
+        }
+    }
+
+    @Test
+    void backupPrunesToTheNewestMaxBackups() throws Exception {
+        Path backups = Files.createDirectories(temporaryDirectory.resolve("backups"));
+        Files.createFile(backups.resolve("progress-2020-01-01_00-00-00-000.db"));
+        Files.createFile(backups.resolve("progress-2020-01-02_00-00-00-000.db"));
+
+        Path newest = database.backup(2);
+
+        assertEquals(Set.of(newest.getFileName().toString(), "progress-2020-01-02_00-00-00-000.db"),
+                fileNames(backups));
+    }
+
+    @Test
+    void pruneDeletesOnlyOldBackupsMatchingTheExactName() throws Exception {
+        Path backups = Files.createDirectories(temporaryDirectory.resolve("backups"));
+        for (String name : List.of("progress-2024-03-01_10-00-00-000.db", "progress-2024-03-02_10-00-00-000.db",
+                "progress-2024-03-03_10-00-00-000.db", "progress-2024-03-04_10-00-00-000.db",
+                "progress-before-migration.db", "progress-2024-03-01_10-00-00-000.db.bak", "notes.txt")) {
+            Files.createFile(backups.resolve(name));
+        }
+        Files.createDirectory(backups.resolve("progress-2000-01-01_00-00-00-000.db"));
+
+        List<Path> deleted = ProgressDatabase.pruneBackups(backups, 2);
+
+        assertEquals(List.of(backups.resolve("progress-2024-03-02_10-00-00-000.db"),
+                backups.resolve("progress-2024-03-01_10-00-00-000.db")), deleted);
+        assertEquals(Set.of("progress-2024-03-03_10-00-00-000.db", "progress-2024-03-04_10-00-00-000.db",
+                        "progress-before-migration.db", "progress-2024-03-01_10-00-00-000.db.bak", "notes.txt",
+                        "progress-2000-01-01_00-00-00-000.db"),
+                fileNames(backups));
+    }
+
+    @Test
+    void zeroMaxBackupsKeepsEveryBackup() throws Exception {
+        Path backups = Files.createDirectories(temporaryDirectory.resolve("backups"));
+        Files.createFile(backups.resolve("progress-2024-03-01_10-00-00-000.db"));
+
+        assertTrue(ProgressDatabase.pruneBackups(backups, 0).isEmpty());
+        assertTrue(Files.exists(backups.resolve("progress-2024-03-01_10-00-00-000.db")));
+    }
+
+    private static Set<String> fileNames(Path directory) throws Exception {
+        try (var files = Files.list(directory)) {
+            return files.map(path -> path.getFileName().toString()).collect(Collectors.toSet());
+        }
+    }
+
     private void save(ProgressSnapshot snapshot) throws Exception {
-        database.save(snapshot, snapshot.totals().keySet());
+        database.save(snapshot);
+    }
+
+    private static ProgressService service(ProgressSnapshot loaded) {
+        Map<String, CropDefinition> crops = new LinkedHashMap<>();
+        crops.put("wheat", new CropDefinition("wheat", Material.WHEAT, Set.of(Material.WHEAT), "Wheat"));
+        crops.put("carrot", new CropDefinition("carrot", Material.CARROT, Set.of(Material.CARROTS), "Carrot"));
+        return new ProgressService(crops, 1_000, List.of(), loaded);
     }
 
     private static ProgressSnapshot snapshot(long amount, Map<UUID, Map<String, Long>> contributions) {

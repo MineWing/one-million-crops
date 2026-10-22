@@ -27,19 +27,22 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 public final class ConfigManager {
     static final String MESSAGE_PALETTE_VERSION_KEY = "message-palette-version";
     static final int CURRENT_MESSAGE_PALETTE_VERSION = 1;
+    static final String MESSAGES_DEFAULTS_VERSION_KEY = "messages-defaults-version";
 
     private final JavaPlugin plugin;
-    private PluginSettings settings;
-    private Map<String, CropDefinition> crops = Map.of();
-    private Map<String, CropDefinition> configuredCrops = Map.of();
-    private Set<String> enabledCropIds = Set.of();
-    private Map<Material, CropDefinition> cropsByItem = Map.of();
-    private HarvestSummarySettings harvestSummary;
-    private YamlConfiguration messages;
+    // Replaced on the main thread and read from async save and placeholder threads, hence volatile.
+    private volatile PluginSettings settings;
+    private volatile Map<String, CropDefinition> crops = Map.of();
+    private volatile Map<String, CropDefinition> configuredCrops = Map.of();
+    private volatile Set<String> enabledCropIds = Set.of();
+    private volatile Map<Material, CropDefinition> cropsByItem = Map.of();
+    private volatile HarvestSummarySettings harvestSummary;
+    private volatile YamlConfiguration messages;
 
     public ConfigManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -91,6 +94,8 @@ public final class ConfigManager {
         if (completionSound == null || completionSound.isBlank()) {
             completionSound = "UI_TOAST_CHALLENGE_COMPLETE";
         }
+        // Validated here, off the main thread, so a bad sound fails the reload instead of the apply step.
+        requireKnownSound(completionSound, name -> SoundResolver.resolve(name) != null);
 
         PluginSettings loadedSettings = new PluginSettings(
                 target,
@@ -139,7 +144,10 @@ public final class ConfigManager {
         migrateHarvestSummaryCountdownTitle(loadedMessages, messagesFile);
         migrateAllMessagePlaceholders(loadedMessages, messagesFile);
         migrateMessagePalette(loadedMessages, bundledMessages, messagesFile);
-        persistMessageActionDefaults(loadedMessages, messagesFile);
+        String pluginVersion = plugin.getPluginMeta().getVersion();
+        if (shouldCopyMessageDefaults(loadedMessages, pluginVersion)) {
+            persistMessageActionDefaults(loadedMessages, messagesFile, pluginVersion);
+        }
         HarvestSummarySettings loadedHarvestSummary = new HarvestSummarySettings(
                 loadedMessages.getBoolean("harvestSummary.enabled", true),
                 Math.clamp(loadedMessages.getInt("harvestSummary.amount", 30), 1, 10_080),
@@ -209,8 +217,19 @@ public final class ConfigManager {
         }
     }
 
-    private void persistMessageActionDefaults(YamlConfiguration messages, File messagesFile) {
+    /**
+     * Bundled defaults are written into messages.yml only when the plugin version changes, so a key an
+     * admin deliberately deleted stays deleted across reloads. Missing keys still resolve at runtime
+     * through the bundled defaults set on the configuration.
+     */
+    static boolean shouldCopyMessageDefaults(YamlConfiguration messages, String pluginVersion) {
+        // The explicit null default skips the bundled defaults, so only the installed file's marker counts.
+        return !Objects.equals(pluginVersion, messages.getString(MESSAGES_DEFAULTS_VERSION_KEY, null));
+    }
+
+    private void persistMessageActionDefaults(YamlConfiguration messages, File messagesFile, String pluginVersion) {
         messages.options().copyDefaults(true);
+        messages.set(MESSAGES_DEFAULTS_VERSION_KEY, pluginVersion);
         try {
             messages.save(messagesFile);
         } catch (IOException exception) {
@@ -374,11 +393,14 @@ public final class ConfigManager {
         return result;
     }
 
-    public void apply(LoadedConfiguration loaded) {
-        if (SoundResolver.resolve(loaded.settings().completionSound()) == null) {
-            throw new IllegalArgumentException("Unknown celebration sound: "
-                    + loaded.settings().completionSound());
+    static void requireKnownSound(String sound, Predicate<String> known) {
+        if (!known.test(sound)) {
+            throw new IllegalArgumentException("Unknown celebration sound: " + sound);
         }
+    }
+
+    /** Swaps in a configuration that {@link #read()} has already validated. */
+    public void apply(LoadedConfiguration loaded) {
         settings = loaded.settings();
         crops = loaded.crops();
         configuredCrops = loaded.configuredCrops();

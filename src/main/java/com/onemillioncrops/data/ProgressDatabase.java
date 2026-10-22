@@ -4,9 +4,10 @@ import com.onemillioncrops.model.ProgressSnapshot;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.LinkOption;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -17,19 +18,30 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 public final class ProgressDatabase implements AutoCloseable {
     private static final DateTimeFormatter BACKUP_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss-SSS");
+    /** Exactly the names backup() writes, so pruning can never touch a file an admin put there. */
+    private static final Pattern BACKUP_NAME =
+            Pattern.compile("progress-\\d{4}-\\d{2}-\\d{2}_\\d{2}-\\d{2}-\\d{2}-\\d{3}\\.db");
     private static final String INSERT_PROGRESS =
             "INSERT INTO crop_progress(crop_id, amount, completed) VALUES (?, ?, ?)";
+    private static final String REPLACE_PROGRESS = """
+             ON CONFLICT(crop_id) DO UPDATE SET
+                amount=excluded.amount,
+                completed=excluded.completed
+            """;
     private static final String KEEP_HIGHER_PROGRESS = """
              ON CONFLICT(crop_id) DO UPDATE SET
                 amount=MAX(crop_progress.amount, excluded.amount),
@@ -37,6 +49,10 @@ public final class ProgressDatabase implements AutoCloseable {
             """;
     private static final String INSERT_CONTRIBUTION =
             "INSERT INTO contributions(player_uuid, crop_id, amount) VALUES (?, ?, ?)";
+    private static final String REPLACE_CONTRIBUTION = """
+             ON CONFLICT(player_uuid, crop_id) DO UPDATE SET
+                amount=excluded.amount
+            """;
     private static final String KEEP_HIGHER_CONTRIBUTION = """
              ON CONFLICT(player_uuid, crop_id) DO UPDATE SET
                 amount=MAX(contributions.amount, excluded.amount)
@@ -46,6 +62,11 @@ public final class ProgressDatabase implements AutoCloseable {
     private final Logger logger;
     private final Path databasePath;
     private Connection connection;
+    /**
+     * Bumped by resetAll(), so a personal-best write queued before a full reset cannot land after it.
+     * Changed only while holding this object's lock; volatile so the main thread can read it without waiting.
+     */
+    private volatile long resetGeneration;
 
     public ProgressDatabase(JavaPlugin plugin, String fileName) {
         this(plugin.getDataFolder().toPath(), plugin.getLogger(), fileName);
@@ -152,19 +173,12 @@ public final class ProgressDatabase implements AutoCloseable {
     }
 
     /**
-     * Replaces progress for the currently managed crops while retaining rows for disabled crops.
-     * This lets a crop be switched off temporarily without losing its total or contributions.
+     * Upserts the snapshot's totals and contributions with their exact values. Rows the snapshot does not
+     * carry are left alone, so a snapshot of only the changed rows is enough, and a disabled crop keeps
+     * its total and contributions. Resets remove rows explicitly through resetAll and resetCrop.
      */
-    public synchronized void save(ProgressSnapshot snapshot, Set<String> managedCropIds) throws SQLException {
-        transaction(() -> {
-            // Also clear every crop the snapshot carries, so a snapshot that disagrees with the
-            // managed set can never hit a primary-key conflict and block every later save.
-            Set<String> replaced = new LinkedHashSet<>(managedCropIds);
-            replaced.addAll(snapshot.totals().keySet());
-            snapshot.contributions().values().forEach(values -> replaced.addAll(values.keySet()));
-            deleteCropRows(replaced, "crop_progress", "contributions");
-            writeSnapshot(snapshot, false);
-        });
+    public synchronized void save(ProgressSnapshot snapshot) throws SQLException {
+        transaction(() -> writeSnapshot(snapshot, false));
     }
 
     public synchronized Map<UUID, Long> harvestPersonalBests() throws SQLException {
@@ -183,9 +197,22 @@ public final class ProgressDatabase implements AutoCloseable {
         return Map.copyOf(personalBests);
     }
 
-    public synchronized void saveHarvestPersonalBests(Map<UUID, Long> personalBests) throws SQLException {
+    /** The number of full resets since the database was opened; pass it to saveHarvestPersonalBests. */
+    public long resetGeneration() {
+        return resetGeneration;
+    }
+
+    /**
+     * Raises the stored personal bests, unless a full reset ran after {@code expectedGeneration} was read.
+     * Returns false, writing nothing, in that case. resetAll() holds the same lock, so the check is atomic.
+     */
+    public synchronized boolean saveHarvestPersonalBests(Map<UUID, Long> personalBests, long expectedGeneration)
+            throws SQLException {
+        if (expectedGeneration != resetGeneration) {
+            return false;
+        }
         if (personalBests.isEmpty()) {
-            return;
+            return true;
         }
         transaction(() -> {
             try (PreparedStatement statement = connection.prepareStatement("""
@@ -204,6 +231,7 @@ public final class ProgressDatabase implements AutoCloseable {
                 statement.executeBatch();
             }
         });
+        return true;
     }
 
     public synchronized void saveCompletion(ProgressSnapshot snapshot, String cropId, Set<UUID> players,
@@ -226,14 +254,14 @@ public final class ProgressDatabase implements AutoCloseable {
     }
 
     /**
-     * Writes the snapshot's totals and contributions. With {@code keepHigher}, existing rows win
-     * when they are further along; otherwise the caller must have cleared the rows first.
+     * Upserts the snapshot's totals and contributions. With {@code keepHigher}, existing rows win
+     * when they are further along; otherwise the snapshot's values replace them.
      */
     private void writeSnapshot(ProgressSnapshot snapshot, boolean keepHigher) throws SQLException {
         try (PreparedStatement progress = connection.prepareStatement(
-                keepHigher ? INSERT_PROGRESS + KEEP_HIGHER_PROGRESS : INSERT_PROGRESS);
+                INSERT_PROGRESS + (keepHigher ? KEEP_HIGHER_PROGRESS : REPLACE_PROGRESS));
              PreparedStatement contribution = connection.prepareStatement(
-                     keepHigher ? INSERT_CONTRIBUTION + KEEP_HIGHER_CONTRIBUTION : INSERT_CONTRIBUTION)) {
+                     INSERT_CONTRIBUTION + (keepHigher ? KEEP_HIGHER_CONTRIBUTION : REPLACE_CONTRIBUTION))) {
             for (Map.Entry<String, Long> entry : snapshot.totals().entrySet()) {
                 progress.setString(1, entry.getKey());
                 progress.setLong(2, entry.getValue());
@@ -299,6 +327,7 @@ public final class ProgressDatabase implements AutoCloseable {
                 statement.executeUpdate("DELETE FROM harvest_personal_bests");
             }
         });
+        resetGeneration++;
     }
 
     public synchronized void resetCrop(String cropId) throws SQLException {
@@ -329,14 +358,50 @@ public final class ProgressDatabase implements AutoCloseable {
         }
     }
 
-    public synchronized Path backup() throws SQLException, IOException {
-        try (Statement statement = connection.createStatement()) {
-            statement.execute("PRAGMA wal_checkpoint(FULL)");
-        }
+    /**
+     * Writes a backup to backups/, then deletes the oldest backups beyond {@code maxBackups} (0 keeps all).
+     * A failed prune is only logged, because the backup itself succeeded.
+     */
+    public synchronized Path backup(int maxBackups) throws SQLException, IOException {
         Path backupDirectory = dataFolder.resolve("backups");
         Files.createDirectories(backupDirectory);
         Path destination = backupDirectory.resolve("progress-" + BACKUP_TIME.format(LocalDateTime.now()) + ".db");
-        return Files.copy(databasePath, destination, StandardCopyOption.COPY_ATTRIBUTES);
+        // VACUUM INTO writes a consistent, compacted copy that includes anything still in the WAL file.
+        try (PreparedStatement statement = connection.prepareStatement("VACUUM INTO ?")) {
+            statement.setString(1, destination.toString());
+            statement.execute();
+        }
+        try {
+            pruneBackups(backupDirectory, maxBackups);
+        } catch (IOException | UncheckedIOException exception) {
+            logger.log(Level.WARNING, "Could not delete old progress backups", exception);
+        }
+        return destination;
+    }
+
+    /**
+     * Deletes all but the newest {@code keep} backups in the folder and returns what it deleted. Only regular
+     * files named exactly like backup() names them are considered; their timestamps sort by name.
+     */
+    static List<Path> pruneBackups(Path backupDirectory, int keep) throws IOException {
+        if (keep <= 0) {
+            return List.of();
+        }
+        List<Path> backups;
+        try (Stream<Path> files = Files.list(backupDirectory)) {
+            backups = files
+                    .filter(path -> BACKUP_NAME.matcher(path.getFileName().toString()).matches())
+                    .filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
+                    .sorted(Comparator.comparing((Path path) -> path.getFileName().toString()).reversed())
+                    .toList();
+        }
+        List<Path> deleted = new ArrayList<>();
+        for (Path old : backups.subList(Math.min(keep, backups.size()), backups.size())) {
+            if (Files.deleteIfExists(old)) {
+                deleted.add(old);
+            }
+        }
+        return deleted;
     }
 
     public Path path() {
