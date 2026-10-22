@@ -27,19 +27,21 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 
 public final class ConfigManager {
     static final String MESSAGE_PALETTE_VERSION_KEY = "message-palette-version";
     static final int CURRENT_MESSAGE_PALETTE_VERSION = 1;
 
     private final JavaPlugin plugin;
-    private PluginSettings settings;
-    private Map<String, CropDefinition> crops = Map.of();
-    private Map<String, CropDefinition> configuredCrops = Map.of();
-    private Set<String> enabledCropIds = Set.of();
-    private Map<Material, CropDefinition> cropsByItem = Map.of();
-    private HarvestSummarySettings harvestSummary;
-    private YamlConfiguration messages;
+    // Replaced on the main thread and read from async save and placeholder threads, hence volatile.
+    private volatile PluginSettings settings;
+    private volatile Map<String, CropDefinition> crops = Map.of();
+    private volatile Map<String, CropDefinition> configuredCrops = Map.of();
+    private volatile Set<String> enabledCropIds = Set.of();
+    private volatile Map<Material, CropDefinition> cropsByItem = Map.of();
+    private volatile HarvestSummarySettings harvestSummary;
+    private volatile YamlConfiguration messages;
 
     public ConfigManager(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -91,6 +93,8 @@ public final class ConfigManager {
         if (completionSound == null || completionSound.isBlank()) {
             completionSound = "UI_TOAST_CHALLENGE_COMPLETE";
         }
+        // Validated here, off the main thread, so a bad sound fails the reload instead of the apply step.
+        requireKnownSound(completionSound, name -> SoundResolver.resolve(name) != null);
 
         PluginSettings loadedSettings = new PluginSettings(
                 target,
@@ -374,11 +378,14 @@ public final class ConfigManager {
         return result;
     }
 
-    public void apply(LoadedConfiguration loaded) {
-        if (SoundResolver.resolve(loaded.settings().completionSound()) == null) {
-            throw new IllegalArgumentException("Unknown celebration sound: "
-                    + loaded.settings().completionSound());
+    static void requireKnownSound(String sound, Predicate<String> known) {
+        if (!known.test(sound)) {
+            throw new IllegalArgumentException("Unknown celebration sound: " + sound);
         }
+    }
+
+    /** Swaps in a configuration that {@link #read()} has already validated. */
+    public void apply(LoadedConfiguration loaded) {
         settings = loaded.settings();
         crops = loaded.crops();
         configuredCrops = loaded.configuredCrops();

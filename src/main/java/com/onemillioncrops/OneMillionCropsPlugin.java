@@ -28,7 +28,6 @@ import org.bukkit.Sound;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
-import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.util.Map;
@@ -37,13 +36,15 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 
 public final class OneMillionCropsPlugin extends JavaPlugin {
     private ConfigManager configManager;
     private Text text;
     private ProgressDatabase database;
-    private ProgressService progress;
+    // Read from async save and placeholder threads; replaced only under stateLock.
+    private volatile ProgressService progress;
     private ScoreboardService scoreboards;
     private GuiService gui;
     private HarvestActionBarService harvestActionBar;
@@ -190,29 +191,27 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         if (!beginOperation(sender, true)) {
             return;
         }
-        configManager.ensureResources();
         String databaseFile = configManager.settings().databaseFile();
         Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
             try {
+                configManager.ensureResources();
                 ConfigManager.LoadedConfiguration loaded = configManager.read();
                 ProgressSnapshot snapshot;
                 synchronized (persistenceLock) {
                     flushAllNow(true);
                     snapshot = database.load();
                 }
-                runSyncIfActive(() -> {
+                completeOperation(sender, "reload-failed", "Could not apply the reloaded configuration", () -> {
                     configManager.apply(loaded);
                     if (!databaseFile.equals(loaded.settings().databaseFile())) {
                         getLogger().warning("storage.database-file changes take effect after a full server restart.");
                     }
-                    progress = createProgress(snapshot);
+                    replaceProgress(createProgress(snapshot));
+                    startAutosave();
                     scoreboards.start();
                     gui.start();
                     harvestSummary.start();
-                    startAutosave();
-                    endOperation();
-                    sendActions("reloaded", sender, Map.of());
-                });
+                }, () -> sendActions("reloaded", sender, Map.of()));
             } catch (Exception exception) {
                 getLogger().log(Level.SEVERE, "Could not reload OneMillionCrops", exception);
                 runSyncIfActive(() -> {
@@ -247,12 +246,10 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                     snapshot = database.load();
                     loaded = configManager.setCropEnabled(cropId, enable);
                 }
-                runSyncIfActive(() -> {
+                completeOperation(player, "crop-toggle-failed", "Could not apply the toggle of crop " + cropId, () -> {
                     configManager.apply(loaded);
-                    synchronized (stateLock) {
-                        progress = createProgress(snapshot);
-                    }
-                    endOperation();
+                    replaceProgress(createProgress(snapshot));
+                }, () -> {
                     scoreboards.updateAll();
                     gui.refreshOpen();
                     sendActions(enable ? "crop-enabled" : "crop-disabled", player,
@@ -277,11 +274,9 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         Bukkit.getScheduler().runTaskAsynchronously(this, () -> {
             try {
                 configManager.setAllowAutomatedFarms(enable);
-                runSyncIfActive(() -> {
-                    configManager.applyAllowAutomatedFarms(enable);
-                    endOperation();
-                    sendActions(enable ? "automode-enabled" : "automode-disabled", sender, Map.of());
-                });
+                completeOperation(sender, "automode-toggle-failed", "Could not apply automated farm crediting",
+                        () -> configManager.applyAllowAutomatedFarms(enable),
+                        () -> sendActions(enable ? "automode-enabled" : "automode-disabled", sender, Map.of()));
             } catch (Exception exception) {
                 getLogger().log(Level.SEVERE, "Could not toggle automated farm crediting", exception);
                 runSyncIfActive(() -> {
@@ -303,11 +298,9 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                     flushAllNow(true);
                     path = database.backup();
                 }
-                runSyncIfActive(() -> {
-                    endOperation();
-                    sendActions("backup-complete", sender, Map.of("file", path.getFileName().toString()));
-                });
-            } catch (SQLException | IOException exception) {
+                completeOperation(sender, "backup-failed", "Could not finish the progress backup", () -> { },
+                        () -> sendActions("backup-complete", sender, Map.of("file", path.getFileName().toString())));
+            } catch (Exception exception) {
                 getLogger().log(Level.SEVERE, "Could not back up progress", exception);
                 runSyncIfActive(() -> {
                     endOperation();
@@ -348,16 +341,21 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                         database.resetCrop(crop.id());
                     }
                 }
-                runSyncIfActive(() -> {
+                completeOperation(sender, "reset-failed", "Could not apply the progress reset", () -> {
+                    // The in-memory reset comes first: it must happen before counting resumes, or the next
+                    // save would write the old totals over the reset rows.
                     if (crop == null) {
                         progress.resetAll();
                         harvestSummary.resetPersonalBests();
-                        sendActions("reset-complete", sender, Map.of());
                     } else {
                         progress.resetCrop(crop.id());
+                    }
+                }, () -> {
+                    if (crop == null) {
+                        sendActions("reset-complete", sender, Map.of());
+                    } else {
                         sendActions("crop-reset-complete", sender, Map.of("crop", crop.displayMiniMessage()));
                     }
-                    endOperation();
                     scoreboards.updateAll();
                     gui.refreshOpen();
                 });
@@ -477,6 +475,44 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         maintenance = false;
         resetDatabaseStarted = false;
         operationRunning.set(false);
+    }
+
+    /**
+     * Finishes an operation on the main thread. The operation always ends, even if {@code work} throws,
+     * so one unexpected error cannot leave counting paused and every admin command refused until a
+     * restart. {@code onSuccess} runs after the operation has ended, and only if {@code work} completed;
+     * otherwise the error is logged and {@code failedEvent} is sent instead.
+     */
+    private void completeOperation(CommandSender sender, String failedEvent, String failureMessage,
+                                   Runnable work, Runnable onSuccess) {
+        runSyncIfActive(() -> {
+            boolean succeeded = runThenEnd(work, this::endOperation,
+                    exception -> getLogger().log(Level.SEVERE, failureMessage, exception));
+            if (succeeded) {
+                onSuccess.run();
+            } else {
+                sendActions(failedEvent, sender, Map.of());
+            }
+        });
+    }
+
+    /** Runs {@code work}, then always {@code end}; returns false after passing a failure to {@code onFailure}. */
+    static boolean runThenEnd(Runnable work, Runnable end, Consumer<RuntimeException> onFailure) {
+        try {
+            work.run();
+            return true;
+        } catch (RuntimeException exception) {
+            onFailure.accept(exception);
+            return false;
+        } finally {
+            end.run();
+        }
+    }
+
+    private void replaceProgress(ProgressService replacement) {
+        synchronized (stateLock) {
+            progress = replacement;
+        }
     }
 
     private void runSyncIfActive(Runnable action) {
