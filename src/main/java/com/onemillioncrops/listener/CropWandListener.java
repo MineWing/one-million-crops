@@ -3,15 +3,19 @@ package com.onemillioncrops.listener;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.model.CropDefinition;
 import com.onemillioncrops.util.Text;
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.block.Barrel;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.Chest;
 import org.bukkit.block.Container;
 import org.bukkit.block.Hopper;
 import org.bukkit.block.ShulkerBox;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -24,14 +28,22 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class CropWandListener implements Listener {
+    /** Seeds cleared by a sneaking deposit: only common farm drops, never rare ones like torchflower seeds. */
+    static final Set<Material> CLEARABLE_SEEDS = EnumSet.of(
+            Material.WHEAT_SEEDS, Material.BEETROOT_SEEDS, Material.MELON_SEEDS, Material.PUMPKIN_SEEDS);
+
     private final OneMillionCropsPlugin plugin;
     private final NamespacedKey wandKey;
     private final CropMarkers markers;
+    /** True while the synthetic access check is being dispatched, so this listener never reacts to it. */
+    private boolean checkingAccess;
 
     public CropWandListener(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
@@ -59,7 +71,7 @@ public final class CropWandListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onUse(PlayerInteractEvent event) {
-        if (event.getHand() != EquipmentSlot.HAND || !isWand(event.getItem())) {
+        if (checkingAccess || event.getHand() != EquipmentSlot.HAND || !isWand(event.getItem())) {
             return;
         }
         Action action = event.getAction();
@@ -72,14 +84,16 @@ public final class CropWandListener implements Listener {
             plugin.sendActions("no-permission", player, Map.of());
             return;
         }
-        BlockState state = event.getClickedBlock().getState();
+        Block clicked = event.getClickedBlock();
+        BlockState state = clicked.getState();
         if (!(state instanceof Container container) || !isSupportedContainer(state)) {
             event.setCancelled(true);
             plugin.sendActions("crop-wand-container-only", player, Map.of());
             return;
         }
         event.setCancelled(true);
-        if (!plugin.configManager().settings().mayContribute(player.getUniqueId())) {
+        if (!plugin.configManager().settings().mayContribute(player.getUniqueId())
+                || !mayOpen(player, clicked, event.getBlockFace())) {
             plugin.sendActions("no-permission", player, Map.of());
             return;
         }
@@ -91,6 +105,23 @@ public final class CropWandListener implements Listener {
                 removeSeeds(player, container.getInventory());
             }
         }
+    }
+
+    /**
+     * Asks protection plugins whether the player could open this container with an empty hand.
+     * Left-clicks are rarely protected, and some plugins skip sneaking right-clicks with an item,
+     * so both inspecting and depositing need a plain right-click to be allowed first.
+     */
+    private boolean mayOpen(Player player, Block block, BlockFace face) {
+        PlayerInteractEvent probe = new PlayerInteractEvent(player, Action.RIGHT_CLICK_BLOCK, null,
+                block, face, EquipmentSlot.HAND);
+        checkingAccess = true;
+        try {
+            Bukkit.getPluginManager().callEvent(probe);
+        } finally {
+            checkingAccess = false;
+        }
+        return !accessDenied(probe.isCancelled(), probe.useInteractedBlock());
     }
 
     private boolean isWand(ItemStack item) {
@@ -150,7 +181,7 @@ public final class CropWandListener implements Listener {
         int removed = 0;
         for (int slot = 0; slot < inventory.getSize(); slot++) {
             ItemStack stack = inventory.getItem(slot);
-            if (stack == null || !isSeed(stack.getType())) {
+            if (stack == null || !isClearableSeed(stack.getType())) {
                 continue;
             }
             removed += stack.getAmount();
@@ -250,8 +281,12 @@ public final class CropWandListener implements Listener {
         return (int) Math.min(Math.max(0, available), Math.max(0L, target - current));
     }
 
-    static boolean isSeed(Material material) {
-        return material != null && material.name().endsWith("_SEEDS");
+    static boolean accessDenied(boolean cancelled, Event.Result useInteractedBlock) {
+        return cancelled || useInteractedBlock == Event.Result.DENY;
+    }
+
+    static boolean isClearableSeed(Material material) {
+        return material != null && CLEARABLE_SEEDS.contains(material);
     }
 
     private record StorageContents(Map<CropDefinition, Integer> eligible, int ignored) {

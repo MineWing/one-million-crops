@@ -46,8 +46,9 @@ gui:
       - ''
       - '<dark_gray>│</dark_gray> <#8CE99A>Left-click</#8CE99A> <gray>to inspect stored crops.</gray>'
       - '<dark_gray>│</dark_gray> <#8CE99A>Right-click</#8CE99A> <gray>to deposit eligible crops.</gray>'
-      - '<dark_gray>│</dark_gray> <#8CE99A>Shift-right-click</#8CE99A> <gray>to deposit and clear seeds.</gray>'
+      - '<dark_gray>│</dark_gray> <#8CE99A>Shift-right-click</#8CE99A> <gray>to deposit and clear common seeds.</gray>'
       - ''
+      - '<dark_gray>│ Sneaking deletes wheat, beetroot, melon and pumpkin seeds.</dark_gray>'
       - '<dark_gray>│ Unmarked and blocked items are ignored.</dark_gray>'
   plant-wand:
     wand:

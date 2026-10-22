@@ -1,6 +1,7 @@
 package com.onemillioncrops.listener;
 
 import org.bukkit.Material;
+import org.bukkit.event.Event;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -21,14 +22,29 @@ final class CropWandListenerTest {
     }
 
     @Test
-    void recognisesSeedItemsWithoutTreatingPlantableCropsAsSeeds() {
-        assertTrue(CropWandListener.isSeed(Material.WHEAT_SEEDS));
-        assertTrue(CropWandListener.isSeed(Material.BEETROOT_SEEDS));
-        assertTrue(CropWandListener.isSeed(Material.MELON_SEEDS));
-        assertTrue(CropWandListener.isSeed(Material.PUMPKIN_SEEDS));
-        assertTrue(CropWandListener.isSeed(Material.TORCHFLOWER_SEEDS));
-        assertFalse(CropWandListener.isSeed(Material.WHEAT));
-        assertFalse(CropWandListener.isSeed(Material.NETHER_WART));
-        assertFalse(CropWandListener.isSeed(null));
+    void clearsOnlyTheCommonFarmSeeds() {
+        assertTrue(CropWandListener.isClearableSeed(Material.WHEAT_SEEDS));
+        assertTrue(CropWandListener.isClearableSeed(Material.BEETROOT_SEEDS));
+        assertTrue(CropWandListener.isClearableSeed(Material.MELON_SEEDS));
+        assertTrue(CropWandListener.isClearableSeed(Material.PUMPKIN_SEEDS));
+        assertEquals(4, CropWandListener.CLEARABLE_SEEDS.size());
+    }
+
+    @Test
+    void keepsRareSeedsAndPlantableCrops() {
+        assertFalse(CropWandListener.isClearableSeed(Material.TORCHFLOWER_SEEDS));
+        assertFalse(CropWandListener.isClearableSeed(Material.PITCHER_POD));
+        assertFalse(CropWandListener.isClearableSeed(Material.WHEAT));
+        assertFalse(CropWandListener.isClearableSeed(Material.CARROT));
+        assertFalse(CropWandListener.isClearableSeed(Material.NETHER_WART));
+        assertFalse(CropWandListener.isClearableSeed(null));
+    }
+
+    @Test
+    void deniesContainerAccessWhenTheProbeIsCancelledOrBlockUseIsDenied() {
+        assertFalse(CropWandListener.accessDenied(false, Event.Result.ALLOW));
+        assertFalse(CropWandListener.accessDenied(false, Event.Result.DEFAULT));
+        assertTrue(CropWandListener.accessDenied(true, Event.Result.ALLOW));
+        assertTrue(CropWandListener.accessDenied(false, Event.Result.DENY));
     }
 }

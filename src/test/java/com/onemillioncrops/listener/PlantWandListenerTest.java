@@ -1,5 +1,6 @@
 package com.onemillioncrops.listener;
 
+import org.bukkit.GameMode;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Block;
@@ -109,6 +110,38 @@ final class PlantWandListenerTest {
                 Material.FARMLAND, Material.SOUL_SAND));
     }
 
+    @Test
+    void protectsTheSquareAroundSpawnUpToTheRadius() {
+        var protection = PlantWandListener.SpawnProtection.of(true, 16, true, false, 100, -50);
+
+        assertTrue(protection.protects(100, -50));
+        assertTrue(protection.protects(116, -34));
+        assertTrue(protection.protects(84, -66));
+        assertFalse(protection.protects(117, -50));
+        assertFalse(protection.protects(100, -67));
+        assertFalse(protection.protects(Integer.MAX_VALUE, Integer.MIN_VALUE));
+    }
+
+    @Test
+    void appliesSpawnProtectionOnlyWhereVanillaWould() {
+        assertFalse(PlantWandListener.SpawnProtection.of(false, 16, true, false, 0, 0).protects(0, 0));
+        assertFalse(PlantWandListener.SpawnProtection.of(true, 0, true, false, 0, 0).protects(0, 0));
+        assertFalse(PlantWandListener.SpawnProtection.of(true, 16, false, false, 0, 0).protects(0, 0));
+        assertFalse(PlantWandListener.SpawnProtection.of(true, 16, true, true, 0, 0).protects(0, 0));
+        assertFalse(PlantWandListener.SpawnProtection.NONE.protects(0, 0));
+    }
+
+    @Test
+    void refusesToBuildInAdventureModeOrUnderSpawnProtection() {
+        var protection = PlantWandListener.SpawnProtection.of(true, 16, true, false, 0, 0);
+        var none = PlantWandListener.SpawnProtection.NONE;
+
+        assertTrue(PlantWandListener.canBuild(GameMode.SURVIVAL, none, 0, 0));
+        assertTrue(PlantWandListener.canBuild(GameMode.CREATIVE, protection, 17, 0));
+        assertFalse(PlantWandListener.canBuild(GameMode.ADVENTURE, none, 0, 0));
+        assertFalse(PlantWandListener.canBuild(GameMode.SURVIVAL, protection, 16, 16));
+    }
+
     /** A one-row world keyed by block X, with only the listed chunk X coordinates loaded. */
     private static World world(Map<Integer, Block> blocksByX, Set<Integer> loadedChunkXs) {
         return (World) Proxy.newProxyInstance(World.class.getClassLoader(), new Class<?>[]{World.class},
@@ -136,6 +169,17 @@ final class PlantWandListenerTest {
         assertEquals(1, PlantWandListener.effectStride(20, 240));
         assertEquals(2, PlantWandListener.effectStride(241, 240));
         assertEquals(5, PlantWandListener.effectStride(1_000, 240));
+    }
+
+    @Test
+    void throttlesCropMenuOpensForTheCooldown() {
+        int cooldown = PlantWandListener.MENU_COOLDOWN_TICKS;
+
+        assertFalse(PlantWandListener.onCooldown(null, 100, cooldown));
+        assertTrue(PlantWandListener.onCooldown(100, 100, cooldown));
+        assertTrue(PlantWandListener.onCooldown(100, 100 + cooldown - 1, cooldown));
+        assertFalse(PlantWandListener.onCooldown(100, 100 + cooldown, cooldown));
+        assertFalse(PlantWandListener.onCooldown(100, 50, cooldown));
     }
 
     private static void assertCrop(String id, Material seed, Material block) {
