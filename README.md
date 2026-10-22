@@ -51,7 +51,7 @@ Set `counting.allow-automated-farms: false`, or toggle it live with `/1mill auto
 
 `/progress` opens an animated inventory containing every enabled crop, its current amount, target, percentage, and completion state. `/1mill scoreboard` provides a compact rotating sidebar, while rapid pickups are combined into a single coloured action-bar update.
 
-At configurable intervals, the plugin broadcasts a ranked harvest summary and shows a draining countdown boss bar. Crop milestones trigger sounds, particles, and announcements. Reaching a crop target starts a persisted completion sequence, and finishing every enabled crop launches a separate grand finale.
+At configurable intervals, the plugin broadcasts a harvest summary ranking the top 10 players (the total still covers everyone online) and shows a draining countdown boss bar. Crop milestones trigger sounds, particles, and announcements. Reaching a crop target starts a persisted completion sequence, and finishing every enabled crop launches a separate grand finale. Celebration fireworks are cosmetic and never damage players.
 
 ## Commands
 
@@ -59,7 +59,7 @@ At configurable intervals, the plugin broadcasts a ranked harvest summary and sh
 |---|---|---|
 | `/progress [crop]` | Open the animated progress GUI | `onemillion.progress` |
 | `/1mill status` | Print every crop total | `onemillion.progress` |
-| `/1mill scoreboard` | Toggle the live sidebar | `onemillion.progress` |
+| `/1mill scoreboard` | Toggle the live sidebar (says so if it is turned off in `config.yml`) | `onemillion.progress` |
 | `/1mill wand` | Receive the crop storage wand | `onemillion.wand` |
 | `/1mill plantwand` | Receive the two-point farmland and nether wart planting wand | `onemillion.plantwand` |
 | `/1mill crops` | Open the crop enable/disable GUI | `onemillion.admin` |
@@ -72,6 +72,11 @@ At configurable intervals, the plugin broadcasts a ranked harvest summary and sh
 | `/1mill reset confirm` | Back up and reset the complete challenge | `onemillion.admin` |
 
 `onemillion.progress`, `onemillion.wand`, and `onemillion.plantwand` are available to everyone by default. `onemillion.admin` defaults to server operators.
+
+### Wands
+
+- The **Crop Wand** only works on chests, barrels, hoppers, and shulker boxes the player could open normally, so protection plugins decide who can inspect or deposit. Shift-right-click deposits and then deletes common seeds (wheat, beetroot, melon, and pumpkin) from the container; torchflower seeds and pitcher pods are kept.
+- The **Plant Wand** follows vanilla building rules as well as protection plugins: nothing is planted in adventure mode, inside spawn protection for non-operators, outside the world border, or where the crop could not survive (for example, too dark). Opening its crop menu has a short half-second cooldown.
 
 ## Install
 
@@ -92,11 +97,19 @@ The plugin creates `config.yml`, `crops.yml`, `messages.yml`, `progress.db`, and
 
 | File | Responsibility |
 |---|---|
-| `config.yml` | Target, participants, counting rules, scoreboard, autosaves, and celebrations |
+| `config.yml` | Target, participants, counting rules, storage and backups, gameplay, scoreboard, GUI, and celebrations |
 | `crops.yml` | Enabled crops, item materials, harvest source blocks, and MiniMessage display names |
 | `messages.yml` | Ordered action lists plus configurable GUI and wand lore lists |
 | `progress.db` | Shared totals, contributions, completion state, and queued celebrations |
-| `backups/` | Manual and automatic pre-reset database backups |
+| `backups/` | Manual and automatic pre-reset database backups, pruned to the newest `storage.max-backups` (default 20, `0` keeps all) |
+
+Notes:
+
+- Lowering `challenge.target-per-crop` never loses progress: stored totals are kept, and raising the target again restores them.
+- Backups use SQLite's `VACUUM INTO`, a consistent, compacted copy taken while the server runs. Pruning only ever deletes the plugin's own `progress-<date>_<time>.db` files in `backups/`.
+- `gameplay.prevent-berry-bush-damage` (default `true`) lets players walk through sweet berry bushes without damage or slowness.
+- New default keys are added to `messages.yml` only when the plugin version changes, so keys you delete stay deleted. Leave the `messages-defaults-version` marker alone.
+- A bad value, such as an unknown `celebration.completion-sound`, makes `/1mill reload` report failure and keep the previous configuration running.
 
 The default catalogue includes wheat, carrots, potatoes, beetroot, nether wart, pumpkins, melon slices, sugar cane, cactus, cocoa beans, bamboo, kelp, berries, chorus fruit, and mushrooms. Crops can be toggled live with `/1mill crops`; disabled progress is preserved.
 
@@ -127,7 +140,7 @@ cd one-million-crops
 mvn package
 ```
 
-The test suite covers target clamping, milestone transitions, contribution tracking, resets, storage wands, planting, database transactions, placeholder values, and action parsing.
+The unit tests cover progress and target handling, milestone transitions, contribution tracking, resets, incremental saves, backups, database transactions, placeholder values, action parsing, and the pure helpers behind the listeners and wands. Event handling itself is not unit-tested, so counting changes should also be checked on a test server.
 
 ---
 
