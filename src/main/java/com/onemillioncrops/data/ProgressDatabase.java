@@ -61,6 +61,11 @@ public final class ProgressDatabase implements AutoCloseable {
     private final Logger logger;
     private final Path databasePath;
     private Connection connection;
+    /**
+     * Bumped by resetAll(), so a personal-best write queued before a full reset cannot land after it.
+     * Changed only while holding this object's lock; volatile so the main thread can read it without waiting.
+     */
+    private volatile long resetGeneration;
 
     public ProgressDatabase(JavaPlugin plugin, String fileName) {
         this(plugin.getDataFolder().toPath(), plugin.getLogger(), fileName);
@@ -191,9 +196,22 @@ public final class ProgressDatabase implements AutoCloseable {
         return Map.copyOf(personalBests);
     }
 
-    public synchronized void saveHarvestPersonalBests(Map<UUID, Long> personalBests) throws SQLException {
+    /** The number of full resets since the database was opened; pass it to saveHarvestPersonalBests. */
+    public long resetGeneration() {
+        return resetGeneration;
+    }
+
+    /**
+     * Raises the stored personal bests, unless a full reset ran after {@code expectedGeneration} was read.
+     * Returns false, writing nothing, in that case. resetAll() holds the same lock, so the check is atomic.
+     */
+    public synchronized boolean saveHarvestPersonalBests(Map<UUID, Long> personalBests, long expectedGeneration)
+            throws SQLException {
+        if (expectedGeneration != resetGeneration) {
+            return false;
+        }
         if (personalBests.isEmpty()) {
-            return;
+            return true;
         }
         transaction(() -> {
             try (PreparedStatement statement = connection.prepareStatement("""
@@ -212,6 +230,7 @@ public final class ProgressDatabase implements AutoCloseable {
                 statement.executeBatch();
             }
         });
+        return true;
     }
 
     public synchronized void saveCompletion(ProgressSnapshot snapshot, String cropId, Set<UUID> players,
@@ -307,6 +326,7 @@ public final class ProgressDatabase implements AutoCloseable {
                 statement.executeUpdate("DELETE FROM harvest_personal_bests");
             }
         });
+        resetGeneration++;
     }
 
     public synchronized void resetCrop(String cropId) throws SQLException {

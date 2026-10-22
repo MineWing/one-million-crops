@@ -22,6 +22,7 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -203,16 +204,39 @@ class ProgressDatabaseTest {
 
     @Test
     void harvestPersonalBestOnlyIncreasesAndIsClearedByFullReset() throws Exception {
-        database.saveHarvestPersonalBests(Map.of(PLAYER, 100L));
-        database.saveHarvestPersonalBests(Map.of(PLAYER, 90L));
+        long generation = database.resetGeneration();
+        database.saveHarvestPersonalBests(Map.of(PLAYER, 100L), generation);
+        database.saveHarvestPersonalBests(Map.of(PLAYER, 90L), generation);
 
         assertEquals(Map.of(PLAYER, 100L), database.harvestPersonalBests());
 
-        database.saveHarvestPersonalBests(Map.of(PLAYER, 125L));
+        database.saveHarvestPersonalBests(Map.of(PLAYER, 125L), generation);
         assertEquals(Map.of(PLAYER, 125L), database.harvestPersonalBests());
 
         database.resetAll();
         assertTrue(database.harvestPersonalBests().isEmpty());
+    }
+
+    @Test
+    void personalBestSaveQueuedBeforeFullResetIsDropped() throws Exception {
+        long beforeReset = database.resetGeneration();
+
+        database.resetAll();
+
+        assertFalse(database.saveHarvestPersonalBests(Map.of(PLAYER, 100L), beforeReset));
+        assertTrue(database.harvestPersonalBests().isEmpty());
+        assertTrue(database.saveHarvestPersonalBests(Map.of(PLAYER, 40L), database.resetGeneration()));
+        assertEquals(Map.of(PLAYER, 40L), database.harvestPersonalBests());
+    }
+
+    @Test
+    void cropResetDoesNotDropPersonalBestSaves() throws Exception {
+        long generation = database.resetGeneration();
+
+        database.resetCrop("wheat");
+
+        assertTrue(database.saveHarvestPersonalBests(Map.of(PLAYER, 100L), generation));
+        assertEquals(Map.of(PLAYER, 100L), database.harvestPersonalBests());
     }
 
     @Test

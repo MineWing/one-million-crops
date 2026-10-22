@@ -173,9 +173,11 @@ public final class HarvestSummaryService {
         }
         ProgressDatabase database = plugin.database();
         Map<UUID, Long> snapshot = Map.copyOf(improved);
+        // Read now, on the main thread: if a full reset wipes the database before the write runs, it is dropped.
+        long generation = database.resetGeneration();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                database.saveHarvestPersonalBests(snapshot);
+                database.saveHarvestPersonalBests(snapshot, generation);
             } catch (SQLException exception) {
                 plugin.getLogger().log(Level.SEVERE, "Could not save harvest-summary personal bests", exception);
             }
