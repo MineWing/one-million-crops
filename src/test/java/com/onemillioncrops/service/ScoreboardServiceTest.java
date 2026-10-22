@@ -14,4 +14,19 @@ final class ScoreboardServiceTest {
         assertEquals("1.00M", ScoreboardService.compact(999_999));
         assertEquals("1.00M", ScoreboardService.compact(1_000_000));
     }
+
+    @Test
+    void toggleReportsWhenConfigDisablesTheScoreboard() {
+        assertEquals(ScoreboardService.ToggleResult.SHOWN, ScoreboardService.toggleResult(true, false));
+        assertEquals(ScoreboardService.ToggleResult.HIDDEN, ScoreboardService.toggleResult(true, true));
+        assertEquals(ScoreboardService.ToggleResult.DISABLED, ScoreboardService.toggleResult(false, false));
+        assertEquals(ScoreboardService.ToggleResult.DISABLED, ScoreboardService.toggleResult(false, true));
+    }
+
+    @Test
+    void everyToggleResultHasAMessageAction() {
+        assertEquals("scoreboard-on", ScoreboardService.ToggleResult.SHOWN.action());
+        assertEquals("scoreboard-off", ScoreboardService.ToggleResult.HIDDEN.action());
+        assertEquals("scoreboard-disabled", ScoreboardService.ToggleResult.DISABLED.action());
+    }
 }

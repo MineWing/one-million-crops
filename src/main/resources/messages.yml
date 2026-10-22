@@ -95,6 +95,11 @@ scoreboard-off:
   actions:
     - '[message] %prefix% <white>Live scoreboard <gray>hidden</gray>.</white>'
     - '[sound] UI_BUTTON_CLICK 0.6 0.85'
+scoreboard-disabled:
+  enabled: true
+  actions:
+    - '[message] %prefix% <white>The live scoreboard is <gray>turned off</gray> on this server.</white>'
+    - '[sound] ENTITY_VILLAGER_NO 0.6 1.0'
 crop-toggle-updating:
   enabled: true
   actions:
