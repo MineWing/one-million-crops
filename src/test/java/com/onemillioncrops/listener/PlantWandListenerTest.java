@@ -171,6 +171,17 @@ final class PlantWandListenerTest {
         assertEquals(5, PlantWandListener.effectStride(1_000, 240));
     }
 
+    @Test
+    void throttlesCropMenuOpensForTheCooldown() {
+        int cooldown = PlantWandListener.MENU_COOLDOWN_TICKS;
+
+        assertFalse(PlantWandListener.onCooldown(null, 100, cooldown));
+        assertTrue(PlantWandListener.onCooldown(100, 100, cooldown));
+        assertTrue(PlantWandListener.onCooldown(100, 100 + cooldown - 1, cooldown));
+        assertFalse(PlantWandListener.onCooldown(100, 100 + cooldown, cooldown));
+        assertFalse(PlantWandListener.onCooldown(100, 50, cooldown));
+    }
+
     private static void assertCrop(String id, Material seed, Material block) {
         var crop = PlantWandListener.crop(id);
         assertEquals(seed, crop.seed());

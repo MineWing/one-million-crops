@@ -46,6 +46,8 @@ public final class PlantWandListener implements Listener {
     /** Widest X or Z extent, and furthest the player may stand from the centre, so scans stay in loaded chunks. */
     static final int MAX_SELECTION_SPAN = 128;
     static final int MAX_PLANTS_PER_USE = 4_096;
+    /** Ticks between crop menu opens, since each one scans the whole selection on the main thread. */
+    static final int MENU_COOLDOWN_TICKS = 10;
     private static final int MAX_EFFECT_BLOCKS = 240;
     private static final int[] CROP_SLOTS = {10, 11, 12, 13, 14, 15, 16, 21, 23};
     private static final List<PlantableCrop> CROPS = List.of(
@@ -73,6 +75,7 @@ public final class PlantWandListener implements Listener {
     private final NamespacedKey wandKey;
     private final NamespacedKey cropKey;
     private final Map<UUID, Selection> selections = new HashMap<>();
+    private final Map<UUID, Integer> menuOpenedTicks = new HashMap<>();
 
     public PlantWandListener(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
@@ -124,6 +127,11 @@ public final class PlantWandListener implements Listener {
             return;
         }
 
+        int tick = Bukkit.getCurrentTick();
+        if (onCooldown(menuOpenedTicks.get(player.getUniqueId()), tick, MENU_COOLDOWN_TICKS)) {
+            return;
+        }
+        menuOpenedTicks.put(player.getUniqueId(), tick);
         Selection previous = selections.get(player.getUniqueId());
         Selection selection = new Selection(previous == null ? null : previous.first(), position);
         selections.put(player.getUniqueId(), selection);
@@ -168,6 +176,7 @@ public final class PlantWandListener implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         selections.remove(event.getPlayer().getUniqueId());
+        menuOpenedTicks.remove(event.getPlayer().getUniqueId());
     }
 
     private boolean isWand(ItemStack item) {
@@ -467,6 +476,14 @@ public final class PlantWandListener implements Listener {
         double deltaX = x - centreX;
         double deltaZ = z - centreZ;
         return deltaX * deltaX + deltaZ * deltaZ <= (double) MAX_SELECTION_SPAN * MAX_SELECTION_SPAN;
+    }
+
+    static boolean onCooldown(Integer lastTick, int currentTick, int cooldownTicks) {
+        if (lastTick == null) {
+            return false;
+        }
+        long elapsed = (long) currentTick - lastTick;
+        return elapsed >= 0 && elapsed < cooldownTicks;
     }
 
     static int effectStride(int blocks, int maximumEffects) {
