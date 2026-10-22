@@ -89,13 +89,14 @@ class CropPickupListenerTest {
     }
 
     @Test
-    void tracksPlacedBlocksThatAreNotTheCropItem() {
-        List<CropDefinition> crops = List.of(WHEAT, MELON, RED_MUSHROOM);
+    void collectsSourceBlocksThatAreNotTheCropItem() {
+        Set<Material> sources = CropPickupListener.sourceMaterials(List.of(WHEAT, MELON, RED_MUSHROOM));
 
-        assertTrue(CropPickupListener.tracksPlacement(true, crops, Material.MELON));
-        assertTrue(CropPickupListener.tracksPlacement(true, crops, Material.RED_MUSHROOM_BLOCK));
-        assertTrue(CropPickupListener.tracksPlacement(true, crops, Material.WHEAT));
-        assertFalse(CropPickupListener.tracksPlacement(true, crops, Material.STONE));
-        assertFalse(CropPickupListener.tracksPlacement(false, crops, Material.MELON));
+        assertTrue(sources.contains(Material.MELON));
+        assertTrue(sources.contains(Material.RED_MUSHROOM_BLOCK));
+        assertTrue(sources.contains(Material.RED_MUSHROOM));
+        assertTrue(sources.contains(Material.WHEAT));
+        assertFalse(sources.contains(Material.MELON_SLICE));
+        assertFalse(sources.contains(Material.STONE));
     }
 }

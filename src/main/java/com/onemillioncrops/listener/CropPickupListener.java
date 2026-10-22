@@ -41,12 +41,17 @@ import org.bukkit.event.player.PlayerHarvestBlockEvent;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public final class CropPickupListener implements Listener {
     private final OneMillionCropsPlugin plugin;
     private final CropMarkers markers;
     private final PlacedSourceTracker placedSources;
+    private Map<String, CropDefinition> sourceMaterialsFor;
+    private Set<Material> sourceMaterials = Set.of();
 
     public CropPickupListener(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
@@ -56,7 +61,12 @@ public final class CropPickupListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockDrops(BlockDropItemEvent event) {
-        CropDefinition sourceCrop = plugin.configManager().cropBySource(event.getBlockState());
+        boolean source = isCropSource(event.getBlockState().getType());
+        if (!source && event.getItems().stream()
+                .noneMatch(item -> plugin.configManager().cropByItem(item.getItemStack().getType()) != null)) {
+            return;
+        }
+        CropDefinition sourceCrop = source ? plugin.configManager().cropBySource(event.getBlockState()) : null;
         boolean playerPlaced = placedSources.consume(event.getBlockState().getBlock())
                 && plugin.configManager().settings().blockPlayerRedrops();
         for (Item item : event.getItems()) {
@@ -81,6 +91,7 @@ public final class CropPickupListener implements Listener {
     public void onWaterHarvest(BlockBreakBlockEvent event) {
         Block block = event.getBlock();
         if (block.getType() == Material.COCOA
+                || !isCropSource(block.getType())
                 || !CocoaAutoReplantListener.isWater(event.getSource().getType())
                 || !plugin.configManager().settings().allowAutomatedFarms()) {
             return;
@@ -105,8 +116,7 @@ public final class CropPickupListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockPlace(BlockPlaceEvent event) {
         Block placed = event.getBlockPlaced();
-        if (tracksPlacement(plugin.configManager().settings().blockPlayerRedrops(),
-                plugin.configManager().crops().values(), placed.getType())) {
+        if (plugin.configManager().settings().blockPlayerRedrops() && isCropSource(placed.getType())) {
             placedSources.mark(placed);
         }
     }
@@ -114,6 +124,11 @@ public final class CropPickupListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         Block block = event.getBlock();
+        // This runs for every block broken on the server, so skip the state snapshot unless
+        // the block could be a crop source at all.
+        if (!isCropSource(block.getType())) {
+            return;
+        }
         CropDefinition crop = plugin.configManager().cropBySource(block.getState(), false);
         if (crop == null || !placedSources.contains(block)) {
             return;
@@ -136,6 +151,9 @@ public final class CropPickupListener implements Listener {
     }
 
     private void releaseGrownSource(Block grownBlock, BlockState newState) {
+        if (!isCropSource(newState.getType())) {
+            return;
+        }
         CropDefinition crop = plugin.configManager().cropBySource(newState, true);
         if (crop == null || placedSources.consume(grownBlock)) {
             return;
@@ -413,6 +431,16 @@ public final class CropPickupListener implements Listener {
         }
     }
 
+    /** Whether any enabled crop uses this block as a source, cached until the crops are reloaded. */
+    private boolean isCropSource(Material material) {
+        Map<String, CropDefinition> crops = plugin.configManager().crops();
+        if (crops != sourceMaterialsFor) {
+            sourceMaterials = sourceMaterials(crops.values());
+            sourceMaterialsFor = crops;
+        }
+        return sourceMaterials.contains(material);
+    }
+
     private boolean consumePlacedSourceAt(Item item) {
         Block block = item.getLocation().getBlock();
         if (placedSources.consume(block)) {
@@ -446,8 +474,10 @@ public final class CropPickupListener implements Listener {
         return entity.combine(stack);
     }
 
-    static boolean tracksPlacement(boolean blockPlayerRedrops, Collection<CropDefinition> crops, Material placed) {
-        return blockPlayerRedrops && crops.stream().anyMatch(crop -> crop.sources().contains(placed));
+    static Set<Material> sourceMaterials(Collection<CropDefinition> crops) {
+        Set<Material> materials = EnumSet.noneOf(Material.class);
+        crops.forEach(crop -> materials.addAll(crop.sources()));
+        return materials;
     }
 
     static HopperPickupPolicy hopperPickupPolicy(boolean blocked) {
