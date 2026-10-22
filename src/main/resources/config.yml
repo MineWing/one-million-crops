@@ -15,11 +15,14 @@ participants:
 
 counting:
   # true: water-harvested crops count automatically without a player collecting them.
+  #       This only applies in EVERYONE mode; in ALLOWLIST mode farms never credit by themselves.
   # false: leave those drops for players to collect and count by hand.
-  # Player pickups and collection from storage count in either mode.
+  # Drops that were not credited automatically still count when a player picks them up or takes
+  # them out of storage.
   allow-automated-farms: true
 
   # Prevents Q/drop-and-repickup loops. Keep this enabled for a fair challenge.
+  # false: crops a player drops, or drops on death, count again when picked up.
   block-player-redrops: true
 
   # Player-broken crops must be fully grown before their drops become eligible.
