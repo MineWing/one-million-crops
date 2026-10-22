@@ -23,6 +23,8 @@ import java.util.logging.Level;
 
 /** Announces how much each currently online player harvested during the configured time window. */
 public final class HarvestSummaryService {
+    /** Ranked rows printed per summary, so large servers don't receive one line per online player. */
+    static final int MAX_ROWS = 10;
     private final OneMillionCropsPlugin plugin;
     private final Map<UUID, Long> harvested = new HashMap<>();
     private final Map<UUID, Long> personalBests = new HashMap<>();
@@ -105,36 +107,38 @@ public final class HarvestSummaryService {
         Map<UUID, Long> completedWindow = new HashMap<>(harvested);
         harvested.clear();
 
-        List<PlayerTotal> players = new ArrayList<>();
-        for (Player player : Bukkit.getOnlinePlayers()) {
-            players.add(new PlayerTotal(
-                    player,
-                    completedWindow.getOrDefault(player.getUniqueId(), 0L)
-            ));
-        }
-        if (players.isEmpty()) {
+        List<Player> online = List.copyOf(Bukkit.getOnlinePlayers());
+        if (online.isEmpty()) {
             return;
         }
-        players.sort(Comparator.comparingLong(PlayerTotal::amount).reversed()
-                .thenComparing(summary -> summary.player().getName(), String.CASE_INSENSITIVE_ORDER));
 
+        // Totals and personal bests cover every online player; only the printed rows are capped.
         long total = 0L;
         List<SummaryActionService.SummaryEntry> entries = new ArrayList<>();
         Map<UUID, Long> improvedPersonalBests = new HashMap<>();
-        for (PlayerTotal summary : players) {
-            total = Numbers.saturatingAdd(total, summary.amount());
-            UUID playerId = summary.player().getUniqueId();
-            boolean personalBest = recordPersonalBest(personalBests, playerId, summary.amount());
+        for (Player player : online) {
+            UUID playerId = player.getUniqueId();
+            long amount = completedWindow.getOrDefault(playerId, 0L);
+            total = Numbers.saturatingAdd(total, amount);
+            boolean personalBest = recordPersonalBest(personalBests, playerId, amount);
             if (personalBest) {
-                improvedPersonalBests.put(playerId, summary.amount());
+                improvedPersonalBests.put(playerId, amount);
             }
-            entries.add(new SummaryActionService.SummaryEntry(
-                    summary.player().getName(), summary.amount(), personalBest));
+            entries.add(new SummaryActionService.SummaryEntry(player.getName(), amount, personalBest));
         }
         savePersonalBests(improvedPersonalBests);
         // Shares the plugin's action service: each instance registers a firework damage listener.
         plugin.actions().execute(plugin.configManager().harvestSummary().actions(),
-                players.stream().map(PlayerTotal::player).toList(), entries, total, intervalMinutes);
+                online, leaderboard(entries), total, intervalMinutes);
+    }
+
+    /** Ranks entries by amount, highest first and then by name, keeping the top {@link #MAX_ROWS}. */
+    static List<SummaryActionService.SummaryEntry> leaderboard(List<SummaryActionService.SummaryEntry> entries) {
+        return entries.stream()
+                .sorted(Comparator.comparingLong(SummaryActionService.SummaryEntry::amount).reversed()
+                        .thenComparing(SummaryActionService.SummaryEntry::player, String.CASE_INSENSITIVE_ORDER))
+                .limit(MAX_ROWS)
+                .toList();
     }
 
     /**
@@ -293,9 +297,6 @@ public final class HarvestSummaryService {
 
     static void mergePersonalBests(Map<UUID, Long> personalBests, Map<UUID, Long> loaded) {
         loaded.forEach((player, amount) -> personalBests.merge(player, amount, Math::max));
-    }
-
-    private record PlayerTotal(Player player, long amount) {
     }
 
     record CountdownStyle(String title, BossBar.Color color, BossBar.Overlay overlay) {

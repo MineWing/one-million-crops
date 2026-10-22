@@ -25,9 +25,11 @@ import org.bukkit.persistence.PersistentDataType;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -40,6 +42,8 @@ public final class SummaryActionService {
     private static final String PERSONAL_BEST_AMOUNT =
             "<#FFD166><bold>%s</bold></#FFD166> "
                     + "<dark_gray>(</dark_gray><#8CE99A>NEW PB</#8CE99A><dark_gray>)</dark_gray>";
+    /** Placeholders filled per harvest-summary row; see {@link #row(SummaryEntry)}. */
+    private static final Set<String> SUMMARY_ROW_KEYS = Set.of("player", "amount", "amount-display");
     private static final float DEFAULT_SOUND_VOLUME = 0.7f;
     private static final float DEFAULT_SOUND_PITCH = 1.2f;
 
@@ -61,7 +65,7 @@ public final class SummaryActionService {
         }
         Map<String, String> common = new HashMap<>(replacements);
         common.putIfAbsent("prefix", plugin.configManager().message("prefix"));
-        executeExpanded(configured.actions(), recipients, players, rows, Map.copyOf(common));
+        executeExpanded(configured.actions(), recipients, players, rows, Set.of(), Map.copyOf(common));
     }
 
     void execute(List<String> configuredActions, List<Player> recipients, List<SummaryEntry> entries,
@@ -71,19 +75,19 @@ public final class SummaryActionService {
                 "minutes", Integer.toString(intervalMinutes),
                 "prefix", plugin.configManager().message("prefix")
         );
-        executeExpanded(configuredActions, recipients, recipients, rows(entries), common);
+        executeExpanded(configuredActions, recipients, recipients, rows(entries), SUMMARY_ROW_KEYS, common);
     }
 
     private void executeExpanded(List<String> configuredActions, List<? extends Audience> recipients,
                                  List<Player> players, List<Map<String, String>> rows,
-                                 Map<String, String> common) {
+                                 Set<String> rowKeys, Map<String, String> common) {
         for (String configuredAction : configuredActions) {
             ParsedAction action = parse(configuredAction);
             if (action == null) {
                 plugin.getLogger().warning("Ignoring invalid harvestSummary action: " + configuredAction);
                 continue;
             }
-            for (String payload : expandRows(action.payload(), rows, common)) {
+            for (String payload : expandRows(action.payload(), rows, rowKeys, common)) {
                 execute(action.tag(), payload, recipients, players);
             }
         }
@@ -219,7 +223,7 @@ public final class SummaryActionService {
     }
 
     static List<String> expand(String payload, List<SummaryEntry> entries, Map<String, String> common) {
-        return expandRows(payload, rows(entries), common);
+        return expandRows(payload, rows(entries), SUMMARY_ROW_KEYS, common);
     }
 
     private static List<Map<String, String>> rows(List<SummaryEntry> entries) {
@@ -238,8 +242,16 @@ public final class SummaryActionService {
         );
     }
 
-    static List<String> expandRows(String payload, List<Map<String, String>> rows, Map<String, String> common) {
-        boolean hasRowPlaceholder = rows.stream().flatMap(row -> row.keySet().stream())
+    /**
+     * Repeats a payload once per row when it uses a row placeholder, or sends it once otherwise.
+     * {@code rowKeys} names row placeholders known up front, so a row template with no rows sends
+     * nothing instead of leaking raw {@code %player%} text.
+     */
+    static List<String> expandRows(String payload, List<Map<String, String>> rows, Set<String> rowKeys,
+                                   Map<String, String> common) {
+        Set<String> keys = new HashSet<>(rowKeys);
+        rows.forEach(row -> keys.addAll(row.keySet()));
+        boolean hasRowPlaceholder = keys.stream()
                 .anyMatch(key -> payload.contains("%" + key + "%") || payload.contains("<" + key + ">"));
         if (!hasRowPlaceholder) {
             return List.of(Text.replace(payload, common));

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,6 +42,22 @@ final class SummaryActionServiceTest {
                 "Total %total%",
                 List.of(new SummaryActionService.SummaryEntry("Alex", 1_234L)),
                 Map.of("total", "1,234", "minutes", "30")));
+    }
+
+    @Test
+    void rowTemplatesSendNothingWithoutRows() {
+        Map<String, String> common = Map.of("total", "0", "minutes", "30");
+
+        assertEquals(List.of(), SummaryActionService.expand("%player%: %amount%", List.of(), common));
+        assertEquals(List.of(), SummaryActionService.expand("%amount-display%", List.of(), common));
+        assertEquals(List.of("Total 0"), SummaryActionService.expand("Total %total%", List.of(), common));
+    }
+
+    @Test
+    void genericRowsStillExpandByTheirOwnKeys() {
+        assertEquals(List.of("wheat 5", "carrot 7"), SummaryActionService.expandRows("%crop% %amount%",
+                List.of(Map.of("crop", "wheat", "amount", "5"), Map.of("crop", "carrot", "amount", "7")),
+                Set.of(), Map.of()));
     }
 
     @Test
