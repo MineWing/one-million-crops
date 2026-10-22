@@ -21,14 +21,21 @@ final class CropWandListenerTest {
     }
 
     @Test
-    void recognisesSeedItemsWithoutTreatingPlantableCropsAsSeeds() {
-        assertTrue(CropWandListener.isSeed(Material.WHEAT_SEEDS));
-        assertTrue(CropWandListener.isSeed(Material.BEETROOT_SEEDS));
-        assertTrue(CropWandListener.isSeed(Material.MELON_SEEDS));
-        assertTrue(CropWandListener.isSeed(Material.PUMPKIN_SEEDS));
-        assertTrue(CropWandListener.isSeed(Material.TORCHFLOWER_SEEDS));
-        assertFalse(CropWandListener.isSeed(Material.WHEAT));
-        assertFalse(CropWandListener.isSeed(Material.NETHER_WART));
-        assertFalse(CropWandListener.isSeed(null));
+    void clearsOnlyTheCommonFarmSeeds() {
+        assertTrue(CropWandListener.isClearableSeed(Material.WHEAT_SEEDS));
+        assertTrue(CropWandListener.isClearableSeed(Material.BEETROOT_SEEDS));
+        assertTrue(CropWandListener.isClearableSeed(Material.MELON_SEEDS));
+        assertTrue(CropWandListener.isClearableSeed(Material.PUMPKIN_SEEDS));
+        assertEquals(4, CropWandListener.CLEARABLE_SEEDS.size());
+    }
+
+    @Test
+    void keepsRareSeedsAndPlantableCrops() {
+        assertFalse(CropWandListener.isClearableSeed(Material.TORCHFLOWER_SEEDS));
+        assertFalse(CropWandListener.isClearableSeed(Material.PITCHER_POD));
+        assertFalse(CropWandListener.isClearableSeed(Material.WHEAT));
+        assertFalse(CropWandListener.isClearableSeed(Material.CARROT));
+        assertFalse(CropWandListener.isClearableSeed(Material.NETHER_WART));
+        assertFalse(CropWandListener.isClearableSeed(null));
     }
 }

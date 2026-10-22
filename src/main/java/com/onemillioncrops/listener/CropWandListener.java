@@ -24,11 +24,17 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class CropWandListener implements Listener {
+    /** Seeds cleared by a sneaking deposit: only common farm drops, never rare ones like torchflower seeds. */
+    static final Set<Material> CLEARABLE_SEEDS = EnumSet.of(
+            Material.WHEAT_SEEDS, Material.BEETROOT_SEEDS, Material.MELON_SEEDS, Material.PUMPKIN_SEEDS);
+
     private final OneMillionCropsPlugin plugin;
     private final NamespacedKey wandKey;
     private final CropMarkers markers;
@@ -150,7 +156,7 @@ public final class CropWandListener implements Listener {
         int removed = 0;
         for (int slot = 0; slot < inventory.getSize(); slot++) {
             ItemStack stack = inventory.getItem(slot);
-            if (stack == null || !isSeed(stack.getType())) {
+            if (stack == null || !isClearableSeed(stack.getType())) {
                 continue;
             }
             removed += stack.getAmount();
@@ -250,8 +256,8 @@ public final class CropWandListener implements Listener {
         return (int) Math.min(Math.max(0, available), Math.max(0L, target - current));
     }
 
-    static boolean isSeed(Material material) {
-        return material != null && material.name().endsWith("_SEEDS");
+    static boolean isClearableSeed(Material material) {
+        return material != null && CLEARABLE_SEEDS.contains(material);
     }
 
     private record StorageContents(Map<CropDefinition, Integer> eligible, int ignored) {
