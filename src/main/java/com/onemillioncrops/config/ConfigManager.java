@@ -32,6 +32,7 @@ import java.util.function.Predicate;
 public final class ConfigManager {
     static final String MESSAGE_PALETTE_VERSION_KEY = "message-palette-version";
     static final int CURRENT_MESSAGE_PALETTE_VERSION = 1;
+    static final String MESSAGES_DEFAULTS_VERSION_KEY = "messages-defaults-version";
 
     private final JavaPlugin plugin;
     // Replaced on the main thread and read from async save and placeholder threads, hence volatile.
@@ -143,7 +144,10 @@ public final class ConfigManager {
         migrateHarvestSummaryCountdownTitle(loadedMessages, messagesFile);
         migrateAllMessagePlaceholders(loadedMessages, messagesFile);
         migrateMessagePalette(loadedMessages, bundledMessages, messagesFile);
-        persistMessageActionDefaults(loadedMessages, messagesFile);
+        String pluginVersion = plugin.getPluginMeta().getVersion();
+        if (shouldCopyMessageDefaults(loadedMessages, pluginVersion)) {
+            persistMessageActionDefaults(loadedMessages, messagesFile, pluginVersion);
+        }
         HarvestSummarySettings loadedHarvestSummary = new HarvestSummarySettings(
                 loadedMessages.getBoolean("harvestSummary.enabled", true),
                 Math.clamp(loadedMessages.getInt("harvestSummary.amount", 30), 1, 10_080),
@@ -213,8 +217,19 @@ public final class ConfigManager {
         }
     }
 
-    private void persistMessageActionDefaults(YamlConfiguration messages, File messagesFile) {
+    /**
+     * Bundled defaults are written into messages.yml only when the plugin version changes, so a key an
+     * admin deliberately deleted stays deleted across reloads. Missing keys still resolve at runtime
+     * through the bundled defaults set on the configuration.
+     */
+    static boolean shouldCopyMessageDefaults(YamlConfiguration messages, String pluginVersion) {
+        // The explicit null default skips the bundled defaults, so only the installed file's marker counts.
+        return !Objects.equals(pluginVersion, messages.getString(MESSAGES_DEFAULTS_VERSION_KEY, null));
+    }
+
+    private void persistMessageActionDefaults(YamlConfiguration messages, File messagesFile, String pluginVersion) {
         messages.options().copyDefaults(true);
+        messages.set(MESSAGES_DEFAULTS_VERSION_KEY, pluginVersion);
         try {
             messages.save(messagesFile);
         } catch (IOException exception) {
