@@ -1,18 +1,23 @@
 package com.onemillioncrops.listener;
 
+import com.destroystokyo.paper.event.block.BlockDestroyEvent;
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.listener.CropMarkers.Marker;
+import com.onemillioncrops.listener.PendingHarvestSources.Candidate;
+import com.onemillioncrops.listener.PendingHarvestSources.Position;
 import com.onemillioncrops.model.CropDefinition;
 import com.onemillioncrops.service.PlacedSourceTracker;
 import io.papermc.paper.event.block.BlockBreakBlockEvent;
 import io.papermc.paper.event.player.PlayerItemFrameChangeEvent;
 import org.bukkit.Bukkit;
+import org.bukkit.ExplosionResult;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
 import org.bukkit.block.PistonMoveReaction;
 import org.bukkit.entity.Enderman;
+import org.bukkit.entity.Fox;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.Player;
@@ -22,12 +27,14 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockDispenseEvent;
 import org.bukkit.event.block.BlockDropItemEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
 import org.bukkit.event.block.BlockGrowEvent;
 import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.block.BlockSpreadEvent;
 import org.bukkit.event.entity.EntityChangeBlockEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.ItemMergeEvent;
 import org.bukkit.event.entity.ItemSpawnEvent;
@@ -40,16 +47,24 @@ import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerHarvestBlockEvent;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+/**
+ * Decides which crop items count. Only an item carrying an eligible marker is ever credited,
+ * and that marker is only given out where a harvest is seen: a player breaking or picking a
+ * grown crop, water or a piston breaking one, or one destroyed by physics, an explosion or a
+ * mob. Crops coming out of anything else (a player, a mob, a container) are not a harvest.
+ */
 public final class CropPickupListener implements Listener {
     private final OneMillionCropsPlugin plugin;
     private final CropMarkers markers;
     private final PlacedSourceTracker placedSources;
+    private final PendingHarvestSources pendingHarvests = new PendingHarvestSources(Bukkit::getCurrentTick);
     private Map<String, CropDefinition> sourceMaterialsFor;
     private Set<Material> sourceMaterials = Set.of();
 
@@ -75,36 +90,40 @@ public final class CropPickupListener implements Listener {
                 markers.markBlocked(item);
             } else if (sourceCrop != null && itemCrop != null && sourceCrop.id().equals(itemCrop.id())) {
                 markers.markEligible(item, sourceCrop.id());
-            } else if (itemCrop != null) {
+            } else if (itemCrop != null && markers.effective(item).eligibleId() == null) {
+                // A crop from some other block is not a harvest. One that already carries an
+                // eligible marker (spilled from a container) keeps it until it is collected.
                 markers.markBlocked(item);
             }
         }
     }
 
     /**
-     * Flowing water can knock a mature crop loose without a player ever touching it.
+     * Flowing water and pistons break crops without a player ever touching them. Drops of a
+     * grown crop are marked eligible on the stack, and water-harvested ones are credited
+     * straight away when farms may credit the total by themselves; whatever is not credited
+     * (automation off, ALLOWLIST mode, maintenance, a finished crop) waits to be collected.
      * Cocoa handles its own water break in {@link CocoaAutoReplantListener} because it also
-     * has to pay a bean to replant itself; every other crop just gets credited here instead
-     * of waiting for someone to walk over and collect the drops.
+     * has to pay a bean to replant itself.
      */
     @EventHandler(priority = EventPriority.HIGHEST)
-    public void onWaterHarvest(BlockBreakBlockEvent event) {
+    public void onBlockBreakBlock(BlockBreakBlockEvent event) {
         Block block = event.getBlock();
-        if (block.getType() == Material.COCOA
-                || !isCropSource(block.getType())
-                || !CocoaAutoReplantListener.isWater(event.getSource().getType())
-                || !plugin.configManager().settings().creditsAutomatedFarms()) {
+        Material source = event.getSource().getType();
+        if (!isCropSource(block.getType()) || CocoaAutoReplantListener.isWaterCocoaBreak(source, block.getType())) {
             return;
         }
+        boolean playerPlaced = placedSources.consume(block) && plugin.configManager().settings().blockPlayerRedrops();
         CropDefinition crop = plugin.configManager().cropBySource(block.getState());
         if (crop == null) {
             return;
         }
-        if (placedSources.consume(block) && plugin.configManager().settings().blockPlayerRedrops()) {
-            return;
+        if (!playerPlaced && CocoaAutoReplantListener.isWater(source)
+                && plugin.configManager().settings().creditsAutomatedFarms()) {
+            AutomatedDrops.credit(event.getDrops(), crop.item(),
+                    amount -> plugin.recordAutomatedPickup(crop, amount));
         }
-        AutomatedDrops.credit(event.getDrops(), crop.item(),
-                amount -> plugin.recordAutomatedPickup(crop, amount));
+        markers.markHarvest(event.getDrops(), crop, playerPlaced);
     }
 
     /**
@@ -207,6 +226,57 @@ public final class CropPickupListener implements Listener {
         }
     }
 
+    /**
+     * Physics, pistons pulling a support away, trampling and mobs such as farmer villagers
+     * destroy blocks with no drop event. The upper pieces of sugar cane, bamboo, kelp, cactus
+     * and chorus come off this way when their base is broken, which is how those crops are
+     * harvested, so their drops are recognised by where they spawn.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBlockDestroy(BlockDestroyEvent event) {
+        if (event.willDrop()) {
+            recordPendingHarvests(List.of(event.getBlock()));
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBlockExplode(BlockExplodeEvent event) {
+        if (destroysBlocks(event.getExplosionResult())) {
+            recordPendingHarvests(event.blockList());
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onEntityExplode(EntityExplodeEvent event) {
+        if (destroysBlocks(event.getExplosionResult())) {
+            recordPendingHarvests(event.blockList());
+        }
+    }
+
+    /** Foxes pick ripe berries and drop all but the one they keep in their mouth. */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onFoxHarvest(EntityChangeBlockEvent event) {
+        if (event.getEntity() instanceof Fox) {
+            recordPendingHarvests(List.of(event.getBlock()));
+        }
+    }
+
+    private void recordPendingHarvests(Collection<Block> blocks) {
+        boolean blockPlayerRedrops = plugin.configManager().settings().blockPlayerRedrops();
+        List<Candidate> destroyed = new ArrayList<>();
+        for (Block block : blocks) {
+            if (!isCropSource(block.getType())) {
+                continue;
+            }
+            CropDefinition crop = plugin.configManager().cropBySource(block.getState());
+            if (crop != null) {
+                destroyed.add(new Candidate(Position.of(block), crop.id(), crop.item(),
+                        blockPlayerRedrops && placedSources.contains(block)));
+            }
+        }
+        pendingHarvests.record(destroyed);
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onBlockDispense(BlockDispenseEvent event) {
         if (!plugin.configManager().settings().blockPlayerRedrops()
@@ -218,10 +288,16 @@ public final class CropPickupListener implements Listener {
         event.setItem(item);
     }
 
+    /**
+     * Item entities without a marker never count. One spawning where a crop was just destroyed
+     * (see {@link #onBlockDestroy}) is that crop's drop and becomes eligible; one spawning on
+     * a player-placed source is blocked, which also clears that source's marker.
+     */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onItemSpawn(ItemSpawnEvent event) {
         Item item = event.getEntity();
-        if (plugin.configManager().cropByItem(item.getItemStack().getType()) == null) {
+        ItemStack stack = item.getItemStack();
+        if (plugin.configManager().cropByItem(stack.getType()) == null) {
             return;
         }
         if (markers.moveStackMarkerToEntity(item).isPresent() || markers.read(item).isPresent()) {
@@ -229,7 +305,21 @@ public final class CropPickupListener implements Listener {
             // consume the marker of an unrelated placed block underneath.
             return;
         }
-        if (plugin.configManager().settings().blockPlayerRedrops() && consumePlacedSourceAt(item)) {
+        boolean blockPlayerRedrops = plugin.configManager().settings().blockPlayerRedrops();
+        Block block = item.getLocation().getBlock();
+        if (blockPlayerRedrops && placedSources.consume(block)) {
+            markers.markBlocked(item);
+            return;
+        }
+        // Destroyed blocks drop inside their own space, so only the exact block is checked:
+        // also checking below would let a chest above a crop spill its contents as a harvest.
+        String cropId = pendingHarvests.claim(Position.of(block), stack.getType(), stack.getAmount());
+        if (cropId != null) {
+            markers.markEligible(item, cropId);
+            return;
+        }
+        // A few crop drops spawn just above the source block's coordinates.
+        if (blockPlayerRedrops && placedSources.consume(block.getRelative(BlockFace.DOWN))) {
             markers.markBlocked(item);
         }
     }
@@ -240,24 +330,23 @@ public final class CropPickupListener implements Listener {
         if (crop == null) {
             return;
         }
-        boolean blocked = placedSources.contains(event.getHarvestedBlock());
-        for (ItemStack stack : event.getItemsHarvested()) {
-            if (stack.getType() != crop.item()) {
-                continue;
-            }
-            if (blocked) {
-                markers.markBlocked(stack);
-            } else {
-                markers.markEligible(stack, crop.id());
-            }
-        }
+        markers.markHarvest(event.getItemsHarvested(), crop, placedSources.contains(event.getHarvestedBlock()));
     }
 
+    /**
+     * A dropped crop is blocked. With block-player-redrops turned off the server has chosen to
+     * allow drop-and-repickup, so the drop is made eligible instead; unmarked it would not count.
+     */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlayerDrop(PlayerDropItemEvent event) {
-        if (plugin.configManager().settings().blockPlayerRedrops()
-                && plugin.configManager().cropByItem(event.getItemDrop().getItemStack().getType()) != null) {
+        CropDefinition crop = plugin.configManager().cropByItem(event.getItemDrop().getItemStack().getType());
+        if (crop == null) {
+            return;
+        }
+        if (plugin.configManager().settings().blockPlayerRedrops()) {
             markers.markBlocked(event.getItemDrop());
+        } else {
+            markers.markEligible(event.getItemDrop(), crop.id());
         }
     }
 
@@ -288,12 +377,20 @@ public final class CropPickupListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerDeath(PlayerDeathEvent event) {
-        if (!plugin.configManager().settings().blockPlayerRedrops() || event.getKeepInventory()) {
+        if (event.getKeepInventory()) {
             return;
         }
+        boolean blockPlayerRedrops = plugin.configManager().settings().blockPlayerRedrops();
         for (ItemStack drop : event.getDrops()) {
-            if (plugin.configManager().cropByItem(drop.getType()) != null) {
+            CropDefinition crop = plugin.configManager().cropByItem(drop.getType());
+            if (crop == null) {
+                continue;
+            }
+            // Like onPlayerDrop, only a server that allows redrops lets death drops count again.
+            if (blockPlayerRedrops) {
                 markers.markBlocked(drop);
+            } else {
+                markers.markEligible(drop, crop.id());
             }
         }
     }
@@ -339,16 +436,8 @@ public final class CropPickupListener implements Listener {
             return;
         }
         Item item = event.getItem();
-        Marker marker = markers.read(item);
-        if (marker.blocked()) {
-            return;
-        }
-        CropDefinition materialCrop = plugin.configManager().cropByItem(item.getItemStack().getType());
-        if (materialCrop == null) {
-            return;
-        }
-        CropDefinition crop = playerPickupCrop(materialCrop, marker.eligibleId(),
-                plugin.configManager().crop(marker.eligibleId()));
+        CropDefinition crop = creditableCrop(item.getItemStack().getType(),
+                plugin.configManager().crop(markers.read(item).creditableCropId()));
         if (crop == null) {
             return;
         }
@@ -363,21 +452,19 @@ public final class CropPickupListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onInventoryPickup(InventoryPickupItemEvent event) {
         Item item = event.getItem();
-        CropDefinition materialCrop = plugin.configManager().cropByItem(item.getItemStack().getType());
-        if (materialCrop == null) {
+        if (plugin.configManager().cropByItem(item.getItemStack().getType()) == null) {
             return;
         }
 
         // The hopper copies the entity's stack after this event, so the marker has to be in
         // the stack for the inserted part to carry it into the container.
         ItemStack stack = item.getItemStack();
-        Marker marker = markers.effective(item);
-        if (hopperPickupPolicy(marker.blocked()) == HopperPickupPolicy.BLOCK) {
+        Marker stackMarker = hopperStackMarker(stack.getType(),
+                plugin.configManager().crop(markers.effective(item).creditableCropId()));
+        if (stackMarker.blocked()) {
             markers.markBlocked(stack);
         } else {
-            CropDefinition eligibleCrop = plugin.configManager().crop(marker.eligibleId());
-            boolean validEligibleCrop = eligibleCrop != null && eligibleCrop.item() == stack.getType();
-            markers.markEligible(stack, (validEligibleCrop ? eligibleCrop : materialCrop).id());
+            markers.markEligible(stack, stackMarker.eligibleId());
         }
         item.setItemStack(stack);
 
@@ -441,15 +528,6 @@ public final class CropPickupListener implements Listener {
         return sourceMaterials.contains(material);
     }
 
-    private boolean consumePlacedSourceAt(Item item) {
-        Block block = item.getLocation().getBlock();
-        if (placedSources.consume(block)) {
-            return true;
-        }
-        // A few crop drops spawn just above the source block's coordinates.
-        return placedSources.consume(block.getRelative(BlockFace.DOWN));
-    }
-
     private String state(Item item) {
         Marker marker = markers.effective(item);
         if (marker.blocked()) {
@@ -458,15 +536,23 @@ public final class CropPickupListener implements Listener {
         return marker.eligibleId() == null ? "automatic" : "eligible:" + marker.eligibleId();
     }
 
-    static CropDefinition playerPickupCrop(CropDefinition materialCrop, String eligibleId,
-                                           CropDefinition eligibleCrop) {
-        if (materialCrop == null) {
-            return null;
-        }
-        if (eligibleId != null) {
-            return eligibleCrop != null && eligibleCrop.item() == materialCrop.item() ? eligibleCrop : null;
-        }
-        return materialCrop;
+    /**
+     * The crop an item counts as: the crop its eligible marker names, as long as that crop is
+     * still enabled and the item is its crop item. Anything else, unmarked items included,
+     * never counts.
+     */
+    static CropDefinition creditableCrop(Material material, CropDefinition markedCrop) {
+        return markedCrop != null && markedCrop.item() == material ? markedCrop : null;
+    }
+
+    /** What a hopper writes into the stack it takes: the crop if the item may count, else blocked. */
+    static Marker hopperStackMarker(Material material, CropDefinition markedCrop) {
+        CropDefinition crop = creditableCrop(material, markedCrop);
+        return crop == null ? new Marker(true, null) : new Marker(false, crop.id());
+    }
+
+    static boolean destroysBlocks(ExplosionResult result) {
+        return result == ExplosionResult.DESTROY || result == ExplosionResult.DESTROY_WITH_DECAY;
     }
 
     /** The entity's marker after a player pickup moves the stack's marker onto it. */
@@ -480,18 +566,7 @@ public final class CropPickupListener implements Listener {
         return materials;
     }
 
-    static HopperPickupPolicy hopperPickupPolicy(boolean blocked) {
-        return !blocked
-                ? HopperPickupPolicy.DEFER_UNTIL_PLAYER
-                : HopperPickupPolicy.BLOCK;
-    }
-
     static boolean shouldBlockItemFrameItem(boolean blockPlayerRedrops, boolean cropItem) {
         return blockPlayerRedrops && cropItem;
-    }
-
-    enum HopperPickupPolicy {
-        DEFER_UNTIL_PLAYER,
-        BLOCK
     }
 }

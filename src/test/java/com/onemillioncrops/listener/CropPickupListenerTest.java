@@ -2,14 +2,13 @@ package com.onemillioncrops.listener;
 
 import com.onemillioncrops.listener.CropMarkers.Marker;
 import com.onemillioncrops.model.CropDefinition;
+import org.bukkit.ExplosionResult;
 import org.bukkit.Material;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Set;
 
-import static com.onemillioncrops.listener.CropPickupListener.HopperPickupPolicy.BLOCK;
-import static com.onemillioncrops.listener.CropPickupListener.HopperPickupPolicy.DEFER_UNTIL_PLAYER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -24,27 +23,45 @@ class CropPickupListenerTest {
             Set.of(Material.RED_MUSHROOM, Material.RED_MUSHROOM_BLOCK), "Red Mushroom");
 
     @Test
-    void handPickupCountsFarmDropsWithAutoModeDisabled() {
-        assertEquals(WHEAT, CropPickupListener.playerPickupCrop(WHEAT, null, null));
+    void neverCountsAnUnmarkedCrop() {
+        // An allay's throw, a broken chest minecart or a killed donkey all spawn unmarked items.
+        assertNull(CropPickupListener.creditableCrop(Material.WHEAT, null));
     }
 
     @Test
-    void rejectsInvalidMarkersAndNonCropPickups() {
-        assertNull(CropPickupListener.playerPickupCrop(WHEAT, "missing", null));
-        var carrot = new CropDefinition("carrot", Material.CARROT, Set.of(Material.CARROTS), "Carrot");
-        assertNull(CropPickupListener.playerPickupCrop(WHEAT, "carrot", carrot));
-        assertNull(CropPickupListener.playerPickupCrop(null, null, null));
-        assertEquals(WHEAT, CropPickupListener.playerPickupCrop(WHEAT, "wheat", WHEAT));
+    void countsAnEligibleCropOnlyAsItsOwnItem() {
+        assertEquals(WHEAT, CropPickupListener.creditableCrop(Material.WHEAT, WHEAT));
+        assertNull(CropPickupListener.creditableCrop(Material.CARROT, WHEAT));
+        assertNull(CropPickupListener.creditableCrop(Material.WHEAT, MELON));
     }
 
     @Test
-    void preservesFarmDropsInHoppersWithAutoModeDisabled() {
-        assertEquals(DEFER_UNTIL_PLAYER, CropPickupListener.hopperPickupPolicy(false));
+    void neverCountsABlockedCropEvenWithAnEligibleMarker() {
+        Marker blockedAndEligible = new Marker(true, "wheat");
+
+        assertNull(blockedAndEligible.creditableCropId());
     }
 
     @Test
-    void blocksPreviouslyCountedHopperPickups() {
-        assertEquals(BLOCK, CropPickupListener.hopperPickupPolicy(true));
+    void keepsEligibleFarmDropsEligibleInHoppers() {
+        assertEquals(new Marker(false, "wheat"), CropPickupListener.hopperStackMarker(Material.WHEAT, WHEAT));
+    }
+
+    @Test
+    void blocksAnythingIneligibleAHopperPicksUp() {
+        Marker blocked = new Marker(true, null);
+
+        // Unmarked items are never made eligible by their material any more.
+        assertEquals(blocked, CropPickupListener.hopperStackMarker(Material.WHEAT, null));
+        assertEquals(blocked, CropPickupListener.hopperStackMarker(Material.CARROT, WHEAT));
+    }
+
+    @Test
+    void recordsHarvestsOnlyForExplosionsThatDestroyBlocks() {
+        assertTrue(CropPickupListener.destroysBlocks(ExplosionResult.DESTROY));
+        assertTrue(CropPickupListener.destroysBlocks(ExplosionResult.DESTROY_WITH_DECAY));
+        assertFalse(CropPickupListener.destroysBlocks(ExplosionResult.KEEP));
+        assertFalse(CropPickupListener.destroysBlocks(ExplosionResult.TRIGGER_BLOCK));
     }
 
     @Test
@@ -68,7 +85,7 @@ class CropPickupListenerTest {
         Marker inventoryStack = Marker.NONE;
 
         int credits = 0;
-        if (CropPickupListener.playerPickupCrop(WHEAT, entity.creditableCropId(), WHEAT) != null) {
+        if (CropPickupListener.creditableCrop(Material.WHEAT, crop(entity.creditableCropId())) != null) {
             credits++;
         }
         if (inventoryStack.creditableCropId() != null) {
@@ -98,5 +115,9 @@ class CropPickupListenerTest {
         assertTrue(sources.contains(Material.WHEAT));
         assertFalse(sources.contains(Material.MELON_SLICE));
         assertFalse(sources.contains(Material.STONE));
+    }
+
+    private static CropDefinition crop(String id) {
+        return WHEAT.id().equals(id) ? WHEAT : null;
     }
 }

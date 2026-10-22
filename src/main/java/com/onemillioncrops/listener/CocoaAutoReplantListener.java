@@ -2,6 +2,7 @@ package com.onemillioncrops.listener;
 
 import com.onemillioncrops.OneMillionCropsPlugin;
 import com.onemillioncrops.model.CropDefinition;
+import com.onemillioncrops.service.PlacedSourceTracker;
 import io.papermc.paper.event.block.BlockBreakBlockEvent;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -47,10 +48,14 @@ public final class CocoaAutoReplantListener implements Listener {
     );
 
     private final OneMillionCropsPlugin plugin;
+    private final CropMarkers markers;
+    private final PlacedSourceTracker placedSources;
     private final Map<BlockPosition, ReplantPlan> pending = new HashMap<>();
 
     public CocoaAutoReplantListener(OneMillionCropsPlugin plugin) {
         this.plugin = plugin;
+        this.markers = new CropMarkers(plugin);
+        this.placedSources = new PlacedSourceTracker(plugin);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -77,7 +82,7 @@ public final class CocoaAutoReplantListener implements Listener {
         if (!consumeReplantBean(event.getDrops())) {
             return;
         }
-        creditHarvestedBeans(event.getDrops());
+        harvestBeans(pod, event.getDrops());
 
         BlockPosition source = BlockPosition.of(pod);
         ReplantPlan plan = new ReplantPlan(source, source, seedling(cocoa));
@@ -89,17 +94,19 @@ public final class CocoaAutoReplantListener implements Listener {
      * Water-harvested beans have no player to credit, so they count straight toward
      * the shared total (like a hopper farm's output would) instead of waiting on
      * someone to walk over and collect them from the ground. In ALLOWLIST mode a farm
-     * cannot credit by itself, so the beans wait for an allowlisted player instead.
+     * cannot credit by itself, and whatever is not credited (automation off, maintenance,
+     * a finished crop) is marked eligible so that a player collecting it still counts.
      */
-    private void creditHarvestedBeans(List<ItemStack> drops) {
-        if (!plugin.configManager().settings().creditsAutomatedFarms()) {
-            return;
-        }
-        CropDefinition crop = plugin.configManager().cropByItem(Material.COCOA_BEANS);
+    private void harvestBeans(Block pod, List<ItemStack> drops) {
+        boolean playerPlaced = placedSources.consume(pod) && plugin.configManager().settings().blockPlayerRedrops();
+        CropDefinition crop = plugin.configManager().cropBySource(pod.getState());
         if (crop == null) {
             return;
         }
-        AutomatedDrops.credit(drops, Material.COCOA_BEANS, amount -> plugin.recordAutomatedPickup(crop, amount));
+        if (!playerPlaced && plugin.configManager().settings().creditsAutomatedFarms()) {
+            AutomatedDrops.credit(drops, crop.item(), amount -> plugin.recordAutomatedPickup(crop, amount));
+        }
+        markers.markHarvest(drops, crop, playerPlaced);
     }
 
     private void prepare(List<Block> movedBlocks, BlockFace movement) {
