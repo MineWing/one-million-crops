@@ -4,6 +4,7 @@ import com.onemillioncrops.model.ProgressSnapshot;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.LinkOption;
@@ -372,7 +373,7 @@ public final class ProgressDatabase implements AutoCloseable {
         }
         try {
             pruneBackups(backupDirectory, maxBackups);
-        } catch (IOException exception) {
+        } catch (IOException | UncheckedIOException exception) {
             logger.log(Level.WARNING, "Could not delete old progress backups", exception);
         }
         return destination;

@@ -246,7 +246,8 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                     snapshot = database.load();
                     loaded = configManager.setCropEnabled(cropId, enable);
                 }
-                completeOperation(player, "crop-toggle-failed", "Could not apply the toggle of crop " + cropId, () -> {
+                String failure = "Could not apply the toggle of crop " + cropId;
+                completeOperation(player, "crop-toggle-failed", failure, () -> {
                     configManager.apply(loaded);
                     replaceProgress(createProgress(snapshot));
                 }, () -> {
