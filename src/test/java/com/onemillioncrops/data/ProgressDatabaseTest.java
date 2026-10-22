@@ -1,6 +1,9 @@
 package com.onemillioncrops.data;
 
+import com.onemillioncrops.model.CropDefinition;
 import com.onemillioncrops.model.ProgressSnapshot;
+import com.onemillioncrops.service.ProgressService;
+import org.bukkit.Material;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -9,6 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,27 +43,34 @@ class ProgressDatabaseTest {
     }
 
     @Test
-    void managedSaveRemovesContributionsMissingFromSnapshot() throws Exception {
-        save(snapshot(25, Map.of(PLAYER, Map.of("wheat", 25L))));
-        database.save(snapshot(0, Map.of()), Set.of("wheat"));
+    void saveLeavesRowsTheSnapshotDoesNotCarry() throws Exception {
+        UUID other = UUID.randomUUID();
+        save(new ProgressSnapshot(
+                Map.of("wheat", 25L, "carrot", 10L),
+                Map.of(PLAYER, Map.of("wheat", 25L, "carrot", 10L), other, Map.of("wheat", 5L)),
+                Map.of("wheat", false, "carrot", false)));
+
+        save(new ProgressSnapshot(Map.of("carrot", 12L), Map.of(PLAYER, Map.of("carrot", 12L)),
+                Map.of("carrot", false)));
 
         ProgressSnapshot loaded = database.load();
-        assertEquals(0, loaded.totals().get("wheat"));
-        assertTrue(loaded.contributions().isEmpty());
+        assertEquals(Map.of("wheat", 25L, "carrot", 12L), loaded.totals());
+        assertEquals(Map.of("wheat", 25L, "carrot", 12L), loaded.contributions().get(PLAYER));
+        assertEquals(Map.of("wheat", 5L), loaded.contributions().get(other));
     }
 
     @Test
-    void managedSaveRetainsProgressForDisabledCrops() throws Exception {
+    void saveRetainsProgressForDisabledCrops() throws Exception {
         save(new ProgressSnapshot(
                 Map.of("wheat", 25L, "carrot", 10L),
                 Map.of(PLAYER, Map.of("wheat", 25L, "carrot", 10L)),
                 Map.of("wheat", false, "carrot", false)));
 
-        database.save(new ProgressSnapshot(
-                        Map.of("carrot", 20L),
-                        Map.of(PLAYER, Map.of("carrot", 20L)),
-                        Map.of("carrot", false)),
-                Set.of("carrot"));
+        // wheat is disabled, so the live ProgressService only knows about carrot.
+        save(new ProgressSnapshot(
+                Map.of("carrot", 20L),
+                Map.of(PLAYER, Map.of("carrot", 20L)),
+                Map.of("carrot", false)));
 
         ProgressSnapshot loaded = database.load();
         assertEquals(Map.of("wheat", 25L, "carrot", 20L), loaded.totals());
@@ -67,22 +78,66 @@ class ProgressDatabaseTest {
     }
 
     @Test
-    void managedSaveReplacesSnapshotCropsOutsideTheManagedSet() throws Exception {
+    void saveReplacesExistingRowsWithTheSnapshotValues() throws Exception {
         save(new ProgressSnapshot(
                 Map.of("wheat", 25L, "carrot", 10L),
                 Map.of(PLAYER, Map.of("wheat", 25L, "carrot", 10L)),
                 Map.of("wheat", false, "carrot", false)));
 
-        // wheat already has rows but is not managed, as when the live crop list and config disagree.
-        database.save(new ProgressSnapshot(
-                        Map.of("wheat", 30L, "carrot", 20L),
-                        Map.of(PLAYER, Map.of("wheat", 30L, "carrot", 20L)),
-                        Map.of("wheat", false, "carrot", false)),
-                Set.of("carrot"));
+        save(new ProgressSnapshot(
+                Map.of("wheat", 100L, "carrot", 8L),
+                Map.of(PLAYER, Map.of("wheat", 30L, "carrot", 8L)),
+                Map.of("wheat", true, "carrot", false)));
 
         ProgressSnapshot loaded = database.load();
-        assertEquals(Map.of("wheat", 30L, "carrot", 20L), loaded.totals());
-        assertEquals(Map.of("wheat", 30L, "carrot", 20L), loaded.contributions().get(PLAYER));
+        assertEquals(Map.of("wheat", 100L, "carrot", 8L), loaded.totals());
+        assertEquals(Map.of("wheat", true, "carrot", false), loaded.completed());
+        assertEquals(Map.of("wheat", 30L, "carrot", 8L), loaded.contributions().get(PLAYER));
+    }
+
+    @Test
+    void routineSaveWritesOnlyChangedRows() throws Exception {
+        // A row for a crop the service does not manage, such as a disabled one.
+        save(new ProgressSnapshot(Map.of("beetroot", 7L), Map.of(PLAYER, Map.of("beetroot", 7L)),
+                Map.of("beetroot", false)));
+        ProgressService service = service(database.load());
+        service.add(PLAYER, "wheat", 10);
+        service.add(PLAYER, "carrot", 5);
+        save(service.takeDirtySnapshot());
+
+        service.add(PLAYER, "carrot", 2);
+        ProgressSnapshot changes = service.takeDirtySnapshot();
+        assertEquals(Set.of("carrot"), changes.totals().keySet());
+        // Change wheat behind the service's back: a routine save of carrot must not touch it.
+        save(new ProgressSnapshot(Map.of("wheat", 99L), Map.of(), Map.of("wheat", false)));
+        save(changes);
+
+        ProgressSnapshot loaded = database.load();
+        assertEquals(Map.of("beetroot", 7L, "wheat", 99L, "carrot", 7L), loaded.totals());
+        assertEquals(Map.of("beetroot", 7L, "wheat", 10L, "carrot", 7L), loaded.contributions().get(PLAYER));
+    }
+
+    @Test
+    void failedRoutineSaveIsFollowedByAFullSave() throws Exception {
+        ProgressService service = service(database.load());
+        service.add(PLAYER, "wheat", 10);
+        service.add(PLAYER, "carrot", 5);
+        save(service.takeDirtySnapshot());
+
+        service.add(PLAYER, "wheat", 7);
+        ProgressSnapshot lost = service.takeDirtySnapshot();
+        database.close();
+        assertThrows(SQLException.class, () -> save(lost));
+        service.markDirty();
+        database.open();
+
+        // Only carrot changes now; the wheat change from the failed save must still reach the database.
+        service.add(PLAYER, "carrot", 3);
+        save(service.takeDirtySnapshot());
+
+        ProgressSnapshot loaded = database.load();
+        assertEquals(Map.of("wheat", 17L, "carrot", 8L), loaded.totals());
+        assertEquals(Map.of("wheat", 17L, "carrot", 8L), loaded.contributions().get(PLAYER));
     }
 
     @Test
@@ -159,7 +214,14 @@ class ProgressDatabaseTest {
     }
 
     private void save(ProgressSnapshot snapshot) throws Exception {
-        database.save(snapshot, snapshot.totals().keySet());
+        database.save(snapshot);
+    }
+
+    private static ProgressService service(ProgressSnapshot loaded) {
+        Map<String, CropDefinition> crops = new LinkedHashMap<>();
+        crops.put("wheat", new CropDefinition("wheat", Material.WHEAT, Set.of(Material.WHEAT), "Wheat"));
+        crops.put("carrot", new CropDefinition("carrot", Material.CARROT, Set.of(Material.CARROTS), "Carrot"));
+        return new ProgressService(crops, 1_000, List.of(), loaded);
     }
 
     private static ProgressSnapshot snapshot(long amount, Map<UUID, Map<String, Long>> contributions) {

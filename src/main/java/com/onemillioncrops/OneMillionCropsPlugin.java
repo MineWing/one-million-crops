@@ -331,7 +331,7 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                         pendingCompletions.clear();
                         beforeReset = progress.takeSnapshot();
                     }
-                    database.save(beforeReset, configManager.crops().keySet());
+                    database.save(beforeReset);
                     if (configManager.settings().backupBeforeReset()) {
                         database.backup();
                     }
@@ -415,7 +415,9 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
                     if (snapshot == null) {
                         break;
                     }
-                    database.save(snapshot, configManager.crops().keySet());
+                    // A routine save carries only what changed since the last one; markDirty() in the
+                    // catch below makes the next snapshot a full one if this write fails.
+                    database.save(snapshot);
                 }
             }
         } catch (SQLException | RuntimeException exception) {
@@ -431,12 +433,21 @@ public final class OneMillionCropsPlugin extends JavaPlugin {
         }
     }
 
+    /** Writes the full state and every queued completion, as reload, backup and shutdown need. */
     private void flushAllNow(boolean announceCompletions) throws SQLException {
+        ProgressService service;
         ProgressSnapshot current;
         synchronized (stateLock) {
-            current = progress.takeSnapshot();
+            service = progress;
+            current = service.takeSnapshot();
         }
-        database.save(current, configManager.crops().keySet());
+        try {
+            database.save(current);
+        } catch (SQLException | RuntimeException exception) {
+            // takeSnapshot() cleared the tracked changes, so the next routine save must write everything.
+            service.markDirty();
+            throw exception;
+        }
         CompletionWork completion;
         while (true) {
             synchronized (stateLock) {

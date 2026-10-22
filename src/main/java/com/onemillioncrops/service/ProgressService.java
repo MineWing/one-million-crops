@@ -20,7 +20,11 @@ public final class ProgressService {
     private final Map<String, Long> totals = new LinkedHashMap<>();
     private final Map<UUID, Map<String, Long>> contributions = new LinkedHashMap<>();
     private final Map<String, Boolean> completed = new LinkedHashMap<>();
-    private boolean dirty;
+    // What changed since the last snapshot was taken, so a routine save writes only those rows.
+    private final Set<String> changedTotals = new LinkedHashSet<>();
+    private final Map<UUID, Set<String>> changedContributions = new LinkedHashMap<>();
+    /** Set after a failed save: the rows it was writing are no longer tracked, so write everything. */
+    private boolean fullSaveNeeded;
 
     public ProgressService(Map<String, CropDefinition> crops, long target, List<Integer> milestones,
                            ProgressSnapshot loaded) {
@@ -68,9 +72,11 @@ public final class ProgressService {
         long actual = Math.min(requested, target - oldAmount);
         long newAmount = oldAmount + actual;
         totals.put(cropId, newAmount);
+        changedTotals.add(cropId);
         if (player != null) {
             contributions.computeIfAbsent(player, ignored -> new LinkedHashMap<>())
                     .merge(cropId, actual, Numbers::saturatingAdd);
+            changedContributions.computeIfAbsent(player, ignored -> new LinkedHashSet<>()).add(cropId);
         }
 
         List<Integer> crossed = new ArrayList<>();
@@ -84,7 +90,6 @@ public final class ProgressService {
         if (justCompleted) {
             completed.put(cropId, true);
         }
-        dirty = true;
         return new IncrementResult(actual, List.copyOf(crossed), justCompleted, justCompleted && allCompleted());
     }
 
@@ -98,7 +103,7 @@ public final class ProgressService {
         totals.replaceAll((ignored, value) -> 0L);
         completed.replaceAll((ignored, value) -> false);
         contributions.clear();
-        dirty = false;
+        clearChanges();
     }
 
     public synchronized void resetCrop(String cropId) {
@@ -108,7 +113,9 @@ public final class ProgressService {
         totals.put(cropId, 0L);
         completed.put(cropId, false);
         contributions.values().forEach(values -> values.remove(cropId));
-        dirty = false;
+        changedTotals.remove(cropId);
+        changedContributions.values().forEach(values -> values.remove(cropId));
+        changedContributions.values().removeIf(Set::isEmpty);
     }
 
     /** The crop's total capped at the target; the stored total can be higher after the target is lowered. */
@@ -138,29 +145,66 @@ public final class ProgressService {
         return new ProgressSnapshot(Map.copyOf(totals), Map.copyOf(contributionsCopy), Map.copyOf(completed));
     }
 
+    /**
+     * Returns only the totals and contributions changed since the last snapshot was taken, or null when
+     * nothing changed. After {@link #markDirty()} it returns the full state instead.
+     */
     public synchronized ProgressSnapshot takeDirtySnapshot() {
-        if (!dirty) {
+        if (!isDirty()) {
             return null;
         }
-        dirty = false;
-        return snapshot();
+        ProgressSnapshot result = fullSaveNeeded ? snapshot() : changes();
+        clearChanges();
+        return result;
     }
 
     /**
-     * Returns the current state whether or not it changed, clearing the dirty flag so a queued
+     * Returns the full current state whether or not it changed, clearing the tracked changes so a queued
      * autosave cannot write the same state again after the caller has persisted it.
      */
     public synchronized ProgressSnapshot takeSnapshot() {
-        dirty = false;
+        clearChanges();
         return snapshot();
     }
 
+    /** Makes the next dirty snapshot a full one. Call it when a save fails, so nothing it carried is lost. */
     public synchronized void markDirty() {
-        dirty = true;
+        fullSaveNeeded = true;
     }
 
     public synchronized boolean isDirty() {
-        return dirty;
+        return fullSaveNeeded || !changedTotals.isEmpty() || !changedContributions.isEmpty();
+    }
+
+    private ProgressSnapshot changes() {
+        Map<String, Long> changedTotalValues = new LinkedHashMap<>();
+        Map<String, Boolean> changedCompleted = new LinkedHashMap<>();
+        for (String cropId : changedTotals) {
+            changedTotalValues.put(cropId, totals.get(cropId));
+            changedCompleted.put(cropId, completed.getOrDefault(cropId, false));
+        }
+        Map<UUID, Map<String, Long>> changedContributionValues = new LinkedHashMap<>();
+        changedContributions.forEach((player, cropIds) -> {
+            Map<String, Long> current = contributions.getOrDefault(player, Map.of());
+            Map<String, Long> values = new LinkedHashMap<>();
+            for (String cropId : cropIds) {
+                Long amount = current.get(cropId);
+                if (amount != null) {
+                    values.put(cropId, amount);
+                }
+            }
+            if (!values.isEmpty()) {
+                changedContributionValues.put(player, Map.copyOf(values));
+            }
+        });
+        return new ProgressSnapshot(Map.copyOf(changedTotalValues), Map.copyOf(changedContributionValues),
+                Map.copyOf(changedCompleted));
+    }
+
+    private void clearChanges() {
+        changedTotals.clear();
+        changedContributions.clear();
+        fullSaveNeeded = false;
     }
 
     public long target() {
