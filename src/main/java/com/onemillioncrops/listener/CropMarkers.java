@@ -1,5 +1,6 @@
 package com.onemillioncrops.listener;
 
+import com.onemillioncrops.model.CropDefinition;
 import io.papermc.paper.persistence.PersistentDataContainerView;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Item;
@@ -8,9 +9,12 @@ import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 
+import java.util.Collection;
+
 /**
  * Reads and writes the two pickup markers. {@code eligible_crop} names the crop an item
- * may be credited as and {@code blocked_pickup} means it must never count. Item entities
+ * may be credited as and {@code blocked_pickup} means it must never count; an item with
+ * neither never counts either, so only a known harvest makes an item eligible. Item entities
  * carry them in their own data container; stacks inside hoppers and chests carry them in
  * their item data. A stack must never enter a player inventory with a marker still on it,
  * because container clicks credit marked stacks a second time.
@@ -74,6 +78,23 @@ final class CropMarkers {
             data.remove(eligibleKey);
             data.set(blockedKey, PersistentDataType.BYTE, (byte) 1);
         });
+    }
+
+    /**
+     * Marks the stacks of the crop's own item among a harvested source's drops: eligible, or
+     * blocked when a player placed the source. onItemSpawn moves the marker onto the entity.
+     */
+    void markHarvest(Collection<ItemStack> drops, CropDefinition crop, boolean playerPlaced) {
+        for (ItemStack stack : drops) {
+            if (stack.getType() != crop.item()) {
+                continue;
+            }
+            if (playerPlaced) {
+                markBlocked(stack);
+            } else {
+                markEligible(stack, crop.id());
+            }
+        }
     }
 
     /** Strips both markers from the stack and returns what was there. */

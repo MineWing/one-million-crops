@@ -25,7 +25,7 @@ OneMillionCrops is a server-wide Paper challenge where everyone contributes towa
 | | |
 |---|---|
 | **One set of totals** | Every participant contributes to the same crop objectives and combined goal |
-| **Accurate counting** | Tracks crop provenance through water, pistons, hoppers, storage, partial pickups, and player drops |
+| **Accurate counting** | Only harvested crops count, tracked through water, pistons, physics, hoppers, storage, and partial pickups |
 | **Live progress** | Animated `/progress` GUI, rotating scoreboard, action bars, milestones, and completion sequences |
 | **Farm tools** | Storage crop wand and a protected two-point farmland and nether wart planting wand |
 | **Safe persistence** | SQLite transactions, autosaves, per-player contributions, and automatic pre-reset backups |
@@ -34,24 +34,26 @@ OneMillionCrops is a server-wide Paper challenge where everyone contributes towa
 
 ## Counting that stays honest
 
-The default rules support manual and automatic farms while preventing common recount loops:
+The default rules support manual and automatic farms while preventing recount loops. A crop counts only when it comes from a harvest; everything else is ignored, even when picked up again.
 
+- **What counts:** a player breaking or picking a fully grown crop, water or pistons breaking one, or physics breaking one (such as the upper part of sugar cane, bamboo, kelp, cactus, or chorus when its base is broken). Crops broken by an explosion, a farmer villager, or a fox also count.
+- **What never counts:** crops that come from anywhere else. That includes crops thrown by allays or villagers, dropped by mobs, or spilled from a broken chest, chest minecart, chest boat, or a donkey's chest.
 - Picking up a stack adds the exact amount that entered the inventory.
-- Water- and piston-harvested drops retain their provenance through hoppers and storage.
+- Farm drops keep their eligibility through hoppers and storage, and count once: when a player picks them up or takes them out.
 - Cocoa pods harvested by water or by moving their supporting jungle logs are replanted at age 0, consuming one bean from the drops.
 - Eligible crops in chests, barrels, hoppers, and shulker boxes can be inspected or deposited with the Crop Wand.
-- Crops deposited by a player are not made eligible again simply by withdrawing them.
-- Deliberately dropped items and dispenser/dropper outputs remain ineligible.
+- Crops deposited by a player are not made eligible again by withdrawing them.
+- Deliberately dropped items, death drops, and dispenser/dropper outputs stay ineligible while `counting.block-player-redrops` is on.
 - Rebreaking a player-placed crop source does not count until it has genuinely grown.
-- Totals clamp exactly at the configured target.
+- Totals stop at the configured target.
 
-Set `counting.allow-automated-farms: false`, or toggle it live with `/1mill automode`, to leave water-harvested drops for players to collect instead of crediting them automatically. Hand pickups and collection from storage still count in either mode. Participant mode defaults to `EVERYONE`; use `ALLOWLIST` with UUIDs for a closed team.
+Set `counting.allow-automated-farms: false`, or toggle it live with `/1mill automode`, to leave water-harvested drops for players to collect instead of crediting them automatically. Hand pickups and collection from storage still count in either mode. Participant mode defaults to `EVERYONE`; use `ALLOWLIST` with UUIDs for a closed team. In `ALLOWLIST` mode farms never credit the total by themselves; their drops wait for an allowlisted player to collect them.
 
 ## Player experience
 
 `/progress` opens an animated inventory containing every enabled crop, its current amount, target, percentage, and completion state. `/1mill scoreboard` provides a compact rotating sidebar, while rapid pickups are combined into a single coloured action-bar update.
 
-At configurable intervals, the plugin broadcasts a ranked harvest summary and shows a draining countdown boss bar. Crop milestones trigger sounds, particles, and announcements. Reaching a crop target starts a persisted completion sequence, and finishing every enabled crop launches a separate grand finale.
+At configurable intervals, the plugin broadcasts a harvest summary ranking the top 10 players (the total still covers everyone online) and shows a draining countdown boss bar. Crop milestones trigger sounds, particles, and announcements. Reaching a crop target starts a persisted completion sequence, and finishing every enabled crop launches a separate grand finale. Celebration fireworks are cosmetic and never damage players.
 
 ## Commands
 
@@ -59,7 +61,7 @@ At configurable intervals, the plugin broadcasts a ranked harvest summary and sh
 |---|---|---|
 | `/progress [crop]` | Open the animated progress GUI | `onemillion.progress` |
 | `/1mill status` | Print every crop total | `onemillion.progress` |
-| `/1mill scoreboard` | Toggle the live sidebar | `onemillion.progress` |
+| `/1mill scoreboard` | Toggle the live sidebar (says so if it is turned off in `config.yml`) | `onemillion.progress` |
 | `/1mill wand` | Receive the crop storage wand | `onemillion.wand` |
 | `/1mill plantwand` | Receive the two-point farmland and nether wart planting wand | `onemillion.plantwand` |
 | `/1mill crops` | Open the crop enable/disable GUI | `onemillion.admin` |
@@ -72,6 +74,11 @@ At configurable intervals, the plugin broadcasts a ranked harvest summary and sh
 | `/1mill reset confirm` | Back up and reset the complete challenge | `onemillion.admin` |
 
 `onemillion.progress`, `onemillion.wand`, and `onemillion.plantwand` are available to everyone by default. `onemillion.admin` defaults to server operators.
+
+### Wands
+
+- The **Crop Wand** only works on chests, barrels, hoppers, and shulker boxes the player could open normally, so protection plugins decide who can inspect or deposit. Shift-right-click deposits and then deletes common seeds (wheat, beetroot, melon, and pumpkin) from the container; torchflower seeds and pitcher pods are kept.
+- The **Plant Wand** follows vanilla building rules as well as protection plugins: nothing is planted in adventure mode, inside spawn protection for non-operators, outside the world border, or where the crop could not survive (for example, too dark). Opening its crop menu has a short half-second cooldown.
 
 ## Install
 
@@ -92,11 +99,19 @@ The plugin creates `config.yml`, `crops.yml`, `messages.yml`, `progress.db`, and
 
 | File | Responsibility |
 |---|---|
-| `config.yml` | Target, participants, counting rules, scoreboard, autosaves, and celebrations |
+| `config.yml` | Target, participants, counting rules, storage and backups, gameplay, scoreboard, GUI, and celebrations |
 | `crops.yml` | Enabled crops, item materials, harvest source blocks, and MiniMessage display names |
 | `messages.yml` | Ordered action lists plus configurable GUI and wand lore lists |
 | `progress.db` | Shared totals, contributions, completion state, and queued celebrations |
-| `backups/` | Manual and automatic pre-reset database backups |
+| `backups/` | Manual and automatic pre-reset database backups, pruned to the newest `storage.max-backups` (default 20, `0` keeps all) |
+
+Notes:
+
+- Lowering `challenge.target-per-crop` never loses progress: stored totals are kept, and raising the target again restores them.
+- Backups use SQLite's `VACUUM INTO`, a consistent, compacted copy taken while the server runs. Pruning only ever deletes the plugin's own `progress-<date>_<time>.db` files in `backups/`.
+- `gameplay.prevent-berry-bush-damage` (default `true`) lets players walk through sweet berry bushes without damage or slowness.
+- New default keys are added to `messages.yml` only when the plugin version changes, so keys you delete stay deleted. Leave the `messages-defaults-version` marker alone.
+- A bad value, such as an unknown `celebration.completion-sound`, makes `/1mill reload` report failure and keep the previous configuration running.
 
 The default catalogue includes wheat, carrots, potatoes, beetroot, nether wart, pumpkins, melon slices, sugar cane, cactus, cocoa beans, bamboo, kelp, berries, chorus fruit, and mushrooms. Crops can be toggled live with `/1mill crops`; disabled progress is preserved.
 
@@ -127,7 +142,7 @@ cd one-million-crops
 mvn package
 ```
 
-The test suite covers target clamping, milestone transitions, contribution tracking, resets, storage wands, planting, database transactions, placeholder values, and action parsing.
+The unit tests cover progress and target handling, milestone transitions, contribution tracking, resets, incremental saves, backups, database transactions, placeholder values, action parsing, and the pure helpers behind the listeners and wands. Event handling itself is not unit-tested, so counting changes should also be checked on a test server.
 
 ---
 

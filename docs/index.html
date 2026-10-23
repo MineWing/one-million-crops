@@ -8,12 +8,12 @@
   <meta property="og:title" content="OneMillionCrops">
   <meta property="og:description" content="One shared challenge. Every harvest counts.">
   <meta property="og:type" content="website">
-  <meta property="og:url" content="https://byalex33.github.io/one-million-crops/">
-  <meta property="og:image" content="https://byalex33.github.io/one-million-crops/og.png">
+  <meta property="og:url" content="https://minewing.github.io/one-million-crops/">
+  <meta property="og:image" content="https://minewing.github.io/one-million-crops/og.png">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="OneMillionCrops">
   <meta name="twitter:description" content="One shared challenge. Every harvest counts.">
-  <meta name="twitter:image" content="https://byalex33.github.io/one-million-crops/og.png">
+  <meta name="twitter:image" content="https://minewing.github.io/one-million-crops/og.png">
   <title>OneMillionCrops — Paper challenge plugin</title>
   <link rel="stylesheet" href="styles.css">
   <script src="script.js" defer></script>
@@ -30,7 +30,7 @@
       <a href="#install">Install</a>
       <a href="#placeholders">Placeholders</a>
       <a href="#commands">Commands</a>
-      <a class="nav-github" href="https://github.com/byalex33/one-million-crops">GitHub <span aria-hidden="true">↗</span></a>
+      <a class="nav-github" href="https://github.com/MineWing/one-million-crops">GitHub <span aria-hidden="true">↗</span></a>
     </nav>
   </header>
 
@@ -41,7 +41,7 @@
         <h1>One million.<br><span>Every crop.</span></h1>
         <p class="hero-lede">Turn every harvest into one shared server-wide challenge—with accurate tracking, live scoreboards, rich celebrations, and PlaceholderAPI support.</p>
         <div class="hero-actions">
-          <a class="button button-primary" href="https://github.com/byalex33/one-million-crops/releases/latest">Download 1.0.7 <span aria-hidden="true">↓</span></a>
+          <a class="button button-primary" href="https://github.com/MineWing/one-million-crops/releases/latest">Download latest <span aria-hidden="true">↓</span></a>
           <a class="button button-secondary" href="#install">Read the docs <span aria-hidden="true">→</span></a>
         </div>
         <ul class="hero-facts" aria-label="Requirements">
@@ -88,7 +88,7 @@
       </div>
       <ol class="steps">
         <li><span>1</span><div><h3>Meet the requirements</h3><p>Run Paper 1.21.11 on Java 21 or newer. Add PlaceholderAPI 2.12.3+ if you want placeholders.</p></div></li>
-        <li><span>2</span><div><h3>Drop in the JAR</h3><p>Copy <code>OneMillionCrops-1.0.7.jar</code> into your server's <code>plugins/</code> folder.</p></div></li>
+        <li><span>2</span><div><h3>Drop in the JAR</h3><p>Copy the shaded <code>OneMillionCrops-*.jar</code> from the latest release into your server's <code>plugins/</code> folder. The <code>original-*.jar</code> does not include SQLite.</p></div></li>
         <li><span>3</span><div><h3>Restart and harvest</h3><p>Restart the server, then use <code>/progress</code> to open the crop progress menu.</p></div></li>
       </ol>
       <aside class="callout"><strong>PlaceholderAPI included.</strong> The expansion registers internally—there is no eCloud download command.</aside>
@@ -144,9 +144,14 @@
           <tr><td><code>/progress [crop]</code></td><td>Open the animated progress menu</td><td><code>onemillion.progress</code></td></tr>
           <tr><td><code>/1mill status</code></td><td>Print every crop total</td><td><code>onemillion.progress</code></td></tr>
           <tr><td><code>/1mill scoreboard</code></td><td>Toggle the live sidebar</td><td><code>onemillion.progress</code></td></tr>
+          <tr><td><code>/1mill wand</code></td><td>Receive the crop storage wand</td><td><code>onemillion.wand</code></td></tr>
+          <tr><td><code>/1mill plantwand</code></td><td>Receive the two-point planting wand</td><td><code>onemillion.plantwand</code></td></tr>
           <tr><td><code>/1mill crops</code></td><td>Manage enabled crops</td><td><code>onemillion.admin</code></td></tr>
+          <tr><td><code>/1mill automode</code></td><td>Toggle automatic harvest crediting</td><td><code>onemillion.admin</code></td></tr>
+          <tr><td><code>/1mill summary [now]</code></td><td>Inspect or broadcast the harvest summary</td><td><code>onemillion.admin</code></td></tr>
           <tr><td><code>/1mill backup</code></td><td>Create a SQLite backup</td><td><code>onemillion.admin</code></td></tr>
           <tr><td><code>/1mill reload</code></td><td>Reload configuration safely</td><td><code>onemillion.admin</code></td></tr>
+          <tr><td><code>/1mill reset [crop] confirm</code></td><td>Back up and reset one crop or the whole challenge</td><td><code>onemillion.admin</code></td></tr>
         </tbody>
       </table>
     </section>
@@ -185,8 +190,8 @@
       <span class="section-index">READY TO GROW?</span>
       <h2>Every pickup moves<br>the whole server forward.</h2>
       <div class="hero-actions">
-        <a class="button button-primary" href="https://github.com/byalex33/one-million-crops/releases/latest">Get OneMillionCrops <span aria-hidden="true">↓</span></a>
-        <a class="button button-secondary" href="https://github.com/byalex33/one-million-crops">View source <span aria-hidden="true">↗</span></a>
+        <a class="button button-primary" href="https://github.com/MineWing/one-million-crops/releases/latest">Get OneMillionCrops <span aria-hidden="true">↓</span></a>
+        <a class="button button-secondary" href="https://github.com/MineWing/one-million-crops">View source <span aria-hidden="true">↗</span></a>
       </div>
     </section>
   </main>
@@ -194,7 +199,7 @@
   <footer>
     <a class="wordmark" href="#top"><span class="wordmark-mark" aria-hidden="true">1M</span><span>OneMillionCrops</span></a>
     <p>Built for Paper servers. Every harvest counts.</p>
-    <a href="https://github.com/byalex33/one-million-crops">GitHub <span aria-hidden="true">↗</span></a>
+    <a href="https://github.com/MineWing/one-million-crops">GitHub <span aria-hidden="true">↗</span></a>
   </footer>
 
   <div class="toast" id="copy-toast" role="status" aria-live="polite">Placeholder copied</div>

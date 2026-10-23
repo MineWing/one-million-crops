@@ -88,10 +88,107 @@ class ProgressServiceTest {
         assertNull(service.takeDirtySnapshot());
     }
 
-    private static ProgressService service(long target) {
+    @Test
+    void loweringTargetCapsDisplayButKeepsStoredTotal() {
+        ProgressService lowered = service(1_000, stored(5_000));
+
+        assertEquals(1_000, lowered.amount("wheat"));
+        assertEquals(1, lowered.completedCount());
+        assertEquals(5_000L, lowered.snapshot().totals().get("wheat"));
+        assertEquals(5_000L, lowered.takeSnapshot().totals().get("wheat"));
+    }
+
+    @Test
+    void addCreditsNothingWhenStoredTotalIsAlreadyPastTarget() {
+        ProgressService lowered = service(1_000, stored(5_000));
+
+        var result = lowered.add(PLAYER, "wheat", 64);
+
+        assertEquals(ProgressService.IncrementResult.NONE, result);
+        assertEquals(5_000L, lowered.snapshot().totals().get("wheat"));
+        assertEquals(0, lowered.contribution(PLAYER, "wheat"));
+        assertFalse(lowered.isDirty());
+    }
+
+    @Test
+    void raisingTargetAgainRestoresTheOldTotal() {
+        ProgressService lowered = service(1_000, stored(5_000));
+        ProgressService raised = service(10_000, lowered.takeSnapshot());
+
+        assertEquals(5_000, raised.amount("wheat"));
+        assertEquals(0, raised.completedCount());
+
+        var result = raised.add(PLAYER, "wheat", 6_000);
+        assertEquals(5_000, result.added());
+        assertTrue(result.completed());
+        assertEquals(10_000, raised.amount("wheat"));
+    }
+
+    @Test
+    void dirtySnapshotCarriesOnlyChangedTotalsAndContributions() {
+        UUID other = UUID.randomUUID();
+        ProgressService service = twoCropService(new ProgressSnapshot(
+                Map.of("wheat", 10L, "carrot", 20L),
+                Map.of(PLAYER, Map.of("wheat", 10L, "carrot", 5L), other, Map.of("carrot", 15L)),
+                Map.of()));
+
+        service.add(PLAYER, "carrot", 3);
+        var changes = service.takeDirtySnapshot();
+
+        assertEquals(Map.of("carrot", 23L), changes.totals());
+        assertEquals(Map.of("carrot", false), changes.completed());
+        assertEquals(Map.of(PLAYER, Map.of("carrot", 8L)), changes.contributions());
+        assertFalse(service.isDirty());
+        assertNull(service.takeDirtySnapshot());
+    }
+
+    @Test
+    void markDirtyMakesTheNextDirtySnapshotFull() {
+        ProgressService service = twoCropService(new ProgressSnapshot(
+                Map.of("wheat", 10L, "carrot", 20L), Map.of(PLAYER, Map.of("wheat", 10L)), Map.of()));
+        service.add(PLAYER, "carrot", 1);
+        service.takeDirtySnapshot();
+
+        // The save of that change failed.
+        service.markDirty();
+
+        var full = service.takeDirtySnapshot();
+        assertEquals(Map.of("wheat", 10L, "carrot", 21L), full.totals());
+        assertEquals(Map.of(PLAYER, Map.of("wheat", 10L, "carrot", 1L)), full.contributions());
+        assertNull(service.takeDirtySnapshot());
+    }
+
+    @Test
+    void resetCropDropsOnlyThatCropsPendingChanges() {
+        ProgressService service = twoCropService(new ProgressSnapshot(Map.of(), Map.of(), Map.of()));
+        service.add(PLAYER, "wheat", 4);
+        service.add(PLAYER, "carrot", 6);
+
+        service.resetCrop("wheat");
+
+        var changes = service.takeDirtySnapshot();
+        assertEquals(Map.of("carrot", 6L), changes.totals());
+        assertEquals(Map.of(PLAYER, Map.of("carrot", 6L)), changes.contributions());
+    }
+
+    private static ProgressService twoCropService(ProgressSnapshot loaded) {
         Map<String, CropDefinition> crops = new LinkedHashMap<>();
         crops.put("wheat", new CropDefinition("wheat", Material.WHEAT, Set.of(Material.WHEAT), "Wheat"));
-        return new ProgressService(crops, target, List.of(25, 50, 75, 90),
-                new ProgressSnapshot(Map.of(), Map.of(), Map.of()));
+        crops.put("carrot", new CropDefinition("carrot", Material.CARROT, Set.of(Material.CARROTS), "Carrot"));
+        return new ProgressService(crops, 100, List.of(25, 50, 75, 90), loaded);
+    }
+
+    private static ProgressSnapshot stored(long wheat) {
+        return new ProgressSnapshot(Map.of("wheat", wheat), Map.of(), Map.of("wheat", true));
+    }
+
+    private static ProgressService service(long target) {
+        return service(target, new ProgressSnapshot(Map.of(), Map.of(), Map.of()));
+    }
+
+    private static ProgressService service(long target, ProgressSnapshot loaded) {
+        Map<String, CropDefinition> crops = new LinkedHashMap<>();
+        crops.put("wheat", new CropDefinition("wheat", Material.WHEAT, Set.of(Material.WHEAT), "Wheat"));
+        return new ProgressService(crops, target, List.of(25, 50, 75, 90), loaded);
     }
 }

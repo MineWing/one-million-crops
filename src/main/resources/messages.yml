@@ -46,8 +46,9 @@ gui:
       - ''
       - '<dark_gray>│</dark_gray> <#8CE99A>Left-click</#8CE99A> <gray>to inspect stored crops.</gray>'
       - '<dark_gray>│</dark_gray> <#8CE99A>Right-click</#8CE99A> <gray>to deposit eligible crops.</gray>'
-      - '<dark_gray>│</dark_gray> <#8CE99A>Shift-right-click</#8CE99A> <gray>to deposit and clear seeds.</gray>'
+      - '<dark_gray>│</dark_gray> <#8CE99A>Shift-right-click</#8CE99A> <gray>to deposit and clear common seeds.</gray>'
       - ''
+      - '<dark_gray>│ Sneaking deletes wheat, beetroot, melon and pumpkin seeds.</dark_gray>'
       - '<dark_gray>│ Unmarked and blocked items are ignored.</dark_gray>'
   plant-wand:
     wand:
@@ -95,6 +96,11 @@ scoreboard-off:
   actions:
     - '[message] %prefix% <white>Live scoreboard <gray>hidden</gray>.</white>'
     - '[sound] UI_BUTTON_CLICK 0.6 0.85'
+scoreboard-disabled:
+  enabled: true
+  actions:
+    - '[message] %prefix% <white>The live scoreboard is <gray>turned off</gray> on this server.</white>'
+    - '[sound] ENTITY_VILLAGER_NO 0.6 1.0'
 crop-toggle-updating:
   enabled: true
   actions:
@@ -180,7 +186,7 @@ help:
 crop-wand-received:
   enabled: true
   actions:
-    - '[message] %prefix% <white>Crop Wand received.</white> <gray>Left-click to inspect, right-click to deposit, or shift-right-click to deposit and clear seeds.</gray>'
+    - '[message] %prefix% <white>Crop Wand received.</white> <gray>Left-click to inspect, right-click to deposit, or shift-right-click to deposit and clear common seeds.</gray>'
     - '[sound] ENTITY_ITEM_PICKUP 0.7 1.35'
 crop-wand-inventory-full:
   enabled: true

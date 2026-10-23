@@ -15,11 +15,14 @@ participants:
 
 counting:
   # true: water-harvested crops count automatically without a player collecting them.
+  #       This only applies in EVERYONE mode; in ALLOWLIST mode farms never credit by themselves.
   # false: leave those drops for players to collect and count by hand.
-  # Player pickups and collection from storage count in either mode.
+  # Drops that were not credited automatically still count when a player picks them up or takes
+  # them out of storage.
   allow-automated-farms: true
 
   # Prevents Q/drop-and-repickup loops. Keep this enabled for a fair challenge.
+  # false: crops a player drops, or drops on death, count again when picked up.
   block-player-redrops: true
 
   # Player-broken crops must be fully grown before their drops become eligible.
@@ -29,6 +32,9 @@ storage:
   database-file: progress.db
   autosave-seconds: 5
   backup-before-reset: true
+  # Oldest backups beyond this many are deleted after each new backup. 0 keeps every backup.
+  # Only files named like the plugin's own backups (progress-<date>_<time>.db) are ever deleted.
+  max-backups: 20
 
 scoreboard:
   enabled-by-default: true
@@ -42,6 +48,10 @@ scoreboard:
   title-animation-frames: 120
   title-frames:
     - '<b><gradient:#FF4B4B:#FF8B2D:#FFD031:#DCFF39:#6DFF45:#3BFFC7:#58D0FF:#5489FF>CROPS</gradient></b>'
+
+gameplay:
+  # Players walk through sweet berry bushes without damage or slowness, so harvesting is painless.
+  prevent-berry-bush-damage: true
 
 gui:
   animation-ticks: 5

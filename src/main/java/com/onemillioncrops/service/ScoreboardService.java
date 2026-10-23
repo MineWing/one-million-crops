@@ -69,17 +69,31 @@ public final class ScoreboardService {
         player.setScoreboard(boards.get(player.getUniqueId()).scoreboard());
     }
 
-    public boolean toggle(Player player) {
+    public ToggleResult toggle(Player player) {
         UUID uuid = player.getUniqueId();
-        if (boards.containsKey(uuid) && !hidden.contains(uuid)) {
-            hidden.add(uuid);
-            Scoreboard old = previous.get(uuid);
-            player.setScoreboard(old != null ? old : Bukkit.getScoreboardManager().getMainScoreboard());
-            return false;
+        ToggleResult result = toggleResult(plugin.configManager().settings().scoreboardEnabled(),
+                boards.containsKey(uuid) && !hidden.contains(uuid));
+        switch (result) {
+            case HIDDEN -> {
+                hidden.add(uuid);
+                Scoreboard old = previous.get(uuid);
+                player.setScoreboard(old != null ? old : Bukkit.getScoreboardManager().getMainScoreboard());
+            }
+            case SHOWN -> {
+                hidden.remove(uuid);
+                showIfEnabled(player);
+            }
+            // Leave the player's preference alone so it still applies if the sidebar is re-enabled.
+            case DISABLED -> { }
         }
-        hidden.remove(uuid);
-        showIfEnabled(player);
-        return true;
+        return result;
+    }
+
+    static ToggleResult toggleResult(boolean scoreboardEnabled, boolean showing) {
+        if (!scoreboardEnabled) {
+            return ToggleResult.DISABLED;
+        }
+        return showing ? ToggleResult.HIDDEN : ToggleResult.SHOWN;
     }
 
     public void updateAll() {
@@ -251,6 +265,23 @@ public final class ScoreboardService {
         if (animationTask != null) {
             animationTask.cancel();
             animationTask = null;
+        }
+    }
+
+    /** What {@link #toggle(Player)} did, and the messages.yml action that reports it. */
+    public enum ToggleResult {
+        SHOWN("scoreboard-on"),
+        HIDDEN("scoreboard-off"),
+        DISABLED("scoreboard-disabled");
+
+        private final String action;
+
+        ToggleResult(String action) {
+            this.action = action;
+        }
+
+        public String action() {
+            return action;
         }
     }
 
